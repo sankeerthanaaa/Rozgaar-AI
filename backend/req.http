@@ -1,0 +1,78 @@
+### ─── Variables ─────────────────────────────────────────────────────────────
+@baseUrl = http://localhost:5000/api
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5YjdkMzc2YWIzOTU5MDZjOGMzZTU2NiIsImlhdCI6MTc3MzY1NTI4NiwiZXhwIjoxNzczNjU2MTg2fQ.2oZtofgefn-zij9UpaGIenmVFCnB80WjbID2lo7gRmk
+
+
+### ─── REGISTER ───────────────────────────────────────────────────────────────
+### Register
+POST http://localhost:5000/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Chethan",
+  "email": "chethan@gmail.com",
+  "password": "123456"
+}
+
+
+### ─── LOGIN ──────────────────────────────────────────────────────────────────
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "chethan@gmail.com",
+  "password": "123456"
+}
+
+
+### ─── REFRESH TOKEN ──────────────────────────────────────────────────────────
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+
+### ─── GET ME (protected) ────────────────────────────────────────────────────
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{accessToken}}
+
+
+### ─── LOGOUT (protected) ────────────────────────────────────────────────────
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{accessToken}}
+
+
+### ─── HEALTH CHECK ───────────────────────────────────────────────────────────
+GET http://localhost:5000/
+
+
+### ─── TEST: Wrong password ──────────────────────────────────────────────────
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "chethan@test.com",
+  "password": "wrongpassword"
+}
+
+
+### ─── TEST: Missing fields ──────────────────────────────────────────────────
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "chethan@test.com"
+}
+
+
+### ─── TEST: Duplicate email ─────────────────────────────────────────────────
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Chethan Kishore",
+  "email": "chethan@test.com",
+  "password": "123456"
+}
+
+
+### ─── TEST: No token (should return 401) ────────────────────────────────────
+GET {{baseUrl}}/auth/me
