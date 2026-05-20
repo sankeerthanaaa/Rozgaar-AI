@@ -1,34 +1,28 @@
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
-
+const { upload } = require("../services/fileUpload.service");
 const { protect } = require("../middleware/auth.middleware");
+const {
+  uploadResume,
+  getResumes,
+  getResumeById,
+  deleteResume,
+  downloadModifiedResume,
+} = require("../controllers/resume.controller");
 
-// storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, "resume-" + Date.now() + ".pdf");
-  },
-});
+// Upload resume & run ATS analysis
+router.post("/upload", protect, upload.single("resume"), uploadResume);
 
-const upload = multer({ storage });
+// Get all resumes for authenticated user
+router.get("/", protect, getResumes);
 
-// ✅ ONLY THIS ROUTE (safe)
-router.post("/upload", protect, upload.single("resume"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({
-      success: false,
-      message: "No file uploaded",
-    });
-  }
+// Download modified resume with applied suggestions
+router.post("/download-modified", protect, downloadModifiedResume);
 
-  res.json({
-    success: true,
-    file: req.file.filename,
-  });
-});
+// Get single resume detail
+router.get("/:id", protect, getResumeById);
+
+// Delete resume
+router.delete("/:id", protect, deleteResume);
 
 module.exports = router;

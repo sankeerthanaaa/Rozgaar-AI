@@ -5,6 +5,8 @@ import QuestionCard from '../components/interview/QuestionCard'
 import QuestionList from '../components/interview/QuestionList'
 import { Skeleton, EmptyState } from '../components/ui'
 import toast from 'react-hot-toast'
+import resumeService from '../services/resumeService'
+import interviewService from '../services/interviewService'
 
 const ALL_QUESTIONS = [
   { id: 1,  category: 'Behavioural', text: 'Tell me about a challenging bug you fixed and how you approached it.',             tip: 'Did you mention: how you found it, tools used, and what you learned?' },
@@ -33,33 +35,94 @@ export default function InterviewPage() {
   const [category,  setCategory]  = useState('All')
   const [loading,   setLoading]   = useState(false)
   const [generated, setGenerated] = useState(false)
+  const [allQuestions, setAllQuestions] = useState([])
   const [questions, setQuestions] = useState([])
   const [current,   setCurrent]   = useState(0)
   const [done,      setDone]      = useState([])
   const [skipped,   setSkipped]   = useState([])
 
-  const buildSet = useCallback((cat) => {
+  const buildSet = useCallback((cat, poolToUse = allQuestions) => {
     const pool = cat === 'All'
-      ? ALL_QUESTIONS
-      : ALL_QUESTIONS.filter(q => q.category === cat)
+      ? poolToUse
+      : poolToUse.filter(q => q.category === cat)
     setQuestions(shuffle(pool))
     setCurrent(0)
     setDone([])
     setSkipped([])
-  }, [])
+  }, [allQuestions])
 
   function handleCategoryChange(cat) {
     setCategory(cat)
-    if (generated) buildSet(cat)
+    if (generated) buildSet(cat, allQuestions)
   }
 
   async function handleGenerate() {
     setLoading(true)
-    // replace with interviewService.generate({ role, category }) on Day 5
-    await new Promise(r => setTimeout(r, 1000))
-    buildSet(category)
-    setGenerated(true)
-    setLoading(false)
+    try {
+      // 1. Resolve Resume Text
+      let resumeText = ""
+      const resumesRes = await resumeService.getResumes()
+      if (resumesRes.success && resumesRes.data && resumesRes.data.length > 0) {
+        // Use the latest analyzed resume
+        resumeText = resumesRes.data[0].parsedText || ""
+      }
+      
+      // Fallback resume texts based on dropdown role if no resume exists
+      if (!resumeText) {
+        if (role === 'swe') {
+          resumeText = "Software Engineer skilled in React, Node.js, Express, JavaScript, SQL, Git."
+        } else if (role === 'da') {
+          resumeText = "Data Analyst skilled in SQL, Python, Excel, Tableau, PowerBI."
+        } else if (role === 'pm') {
+          resumeText = "Product Manager skilled in Agile, Scrum, Product Roadmaps, Jira."
+        } else {
+          resumeText = "Professional seeking growth and general roles."
+        }
+      }
+
+      // 2. Call backend generator
+      const res = await interviewService.generateQuestions(resumeText, role ? `Target role: ${role}` : "")
+      if (res.success && res.data) {
+        const formatted = []
+        let idCounter = 1
+        const categories = res.data.categories || {}
+        
+        Object.entries(categories).forEach(([catKey, list]) => {
+          let categoryName = 'Technical'
+          if (catKey === 'behavioral' || catKey === 'situational') categoryName = 'Behavioural'
+          else if (catKey === 'roleSpecific') categoryName = 'Gap-based'
+          
+          if (Array.isArray(list)) {
+            list.forEach(q => {
+              formatted.push({
+                id: idCounter++,
+                category: categoryName,
+                text: q.question,
+                tip: q.hint || q.topic || 'No tip available.'
+              })
+            })
+          }
+        })
+
+        if (formatted.length === 0) {
+          toast.error("No questions were generated. Try again.")
+          setLoading(false)
+          return
+        }
+
+        setAllQuestions(formatted)
+        buildSet(category, formatted)
+        setGenerated(true)
+        toast.success("Interview questions loaded!")
+      } else {
+        toast.error("Failed to generate custom questions.")
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error("Error generating interview questions.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   function handleNext() {

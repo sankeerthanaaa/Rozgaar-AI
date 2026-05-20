@@ -6,6 +6,7 @@ import toast                from 'react-hot-toast'
 import SourceToggle         from '../components/ats/SourceToggle'
 import ScorePanel           from '../components/ats/ScorePanel'
 import SuggestionsPanel     from '../components/ats/SuggestionsPanel'
+import resumeService        from '../services/resumeService'
 
 const MOCK_RESULT = {
   atsScore: 78,
@@ -143,9 +144,11 @@ export default function ATSPage() {
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
     ]
-    if (!allowed.includes(f.type)) {
-      toast.error('Only PDF or DOC/DOCX files allowed', {
+    const ext = f.name.split('.').pop().toLowerCase()
+    if (!allowed.includes(f.type) && !['pdf', 'doc', 'docx', 'txt'].includes(ext)) {
+      toast.error('Only PDF, DOC/DOCX, or TXT files allowed', {
         position: 'top-center',
         style: {
           fontFamily:   'var(--font-body)',
@@ -167,10 +170,66 @@ export default function ATSPage() {
     setLinkedInUrl(val)
   }
 
-  function handleLinkedInImport() {
+  async function handleLinkedInImport() {
     if (!requireAuth()) return
-    console.log('linkedin import:', linkedInUrl)
-    // swap with linkedInService.import(linkedInUrl) on Day 3
+    if (!linkedInUrl.trim()) {
+      toast.error('Please enter a LinkedIn profile URL first')
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await resumeService.importLinkedIn(linkedInUrl, jdText, activeRole)
+      if (res.success && res.data) {
+        toast.success("LinkedIn profile imported successfully!")
+        setResultFromResume(res.data)
+      } else {
+        toast.error("Failed to import LinkedIn profile")
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error(err.response?.data?.message || "Error importing LinkedIn profile")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Helper to map DB resume to ATS Result state
+  function setResultFromResume(resume) {
+    const score = resume.atsScore || 0
+    const resultData = resume.atsResult || {}
+    
+    setResult({
+      resumeId: resume._id,
+      atsScore: score,
+      jobRole: resultData.jobRole || activeRole || 'General',
+      breakdown: resultData.breakdown || [
+        { label: 'Keyword match', value: score },
+        { label: 'Section completeness', value: 80 },
+        { label: 'Formatting score', value: 80 },
+      ],
+      keywords: resultData.keywords || {
+        present: resultData.jdMatch?.present || [],
+        missing: resultData.jdMatch?.missing || [],
+      },
+      jdMatch: resultData.jdMatch || {
+        score: score,
+        present: resultData.jdMatch?.present || [],
+        missing: resultData.jdMatch?.missing || [],
+      },
+      suggestions: (resume.suggestions || []).map((s, idx) => {
+        if (typeof s === 'string') {
+          return {
+            id: idx + 1,
+            section: 'Resume',
+            type: 'Improve',
+            priority: 'Medium',
+            before: null,
+            after: s
+          }
+        }
+        return s
+      })
+    })
   }
 
   // ── Role / JD handlers ───────────────────────────────
@@ -180,6 +239,7 @@ export default function ATSPage() {
     setCustomRole('')
   }
 
+  // ── Custom role and JD handlers ───────────────────────
   function handleCustomRoleChange(val) {
     if (!requireAuth()) return
     setCustomRole(val)
@@ -207,10 +267,31 @@ export default function ATSPage() {
     }
 
     setLoading(true)
-    // swap with resumeService.analyze({ file, role: activeRole, jdText }) on Day 4
-    await new Promise(r => setTimeout(r, 1500))
-    setResult({ ...MOCK_RESULT, jobRole: activeRole || 'General' })
-    setLoading(false)
+    try {
+      let res
+      if (source === 'upload') {
+        res = await resumeService.uploadResume(file, jdText, activeRole ? [activeRole] : [])
+      } else {
+        if (!file) {
+          uploadToast()
+          setLoading(false)
+          return
+        }
+        res = await resumeService.uploadResume(file, jdText, activeRole ? [activeRole] : [])
+      }
+
+      if (res.success && res.data) {
+        toast.success("Analysis complete!")
+        setResultFromResume(res.data)
+      } else {
+        toast.error("Failed to analyze resume.")
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error(err.response?.data?.message || "Error analyzing resume. Please make sure the file is valid.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -244,7 +325,7 @@ export default function ATSPage() {
             <input
               id="resume-file-input"
               type="file"
-              accept=".pdf,.doc,.docx"
+              accept=".pdf,.doc,.docx,.txt"
               style={{ display: 'none' }}
               onChange={handleFileInputChange}
             />
@@ -287,7 +368,7 @@ export default function ATSPage() {
                   Drag &amp; drop your resume here
                 </p>
                 <p className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginBottom: 'var(--space-3)' }}>
-                  PDF or DOC · max 5MB
+                  PDF, Word, or TXT · max 5MB
                 </p>
                 <button
                   className="btn btn-secondary btn-sm"
@@ -350,7 +431,7 @@ export default function ATSPage() {
               <input
                 id="resume-file-input"
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,.doc,.docx,.txt"
                 style={{ display: 'none' }}
                 onChange={handleFileInputChange}
               />
@@ -559,7 +640,11 @@ export default function ATSPage() {
           <div>
             {loading
               ? <LoadingSkeleton />
-              : <SuggestionsPanel suggestions={result.suggestions} />
+              : <SuggestionsPanel 
+                  suggestions={result.suggestions} 
+                  resumeId={result.resumeId} 
+                  fileName={fileName} 
+                />
             }
           </div>
         </div>

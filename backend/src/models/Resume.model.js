@@ -59,7 +59,10 @@ const ResumeSchema = new mongoose.Schema(
       type: Object,
       default: {},
     },
-    suggestions: [{ type: String }],
+    suggestions: {
+      type: Array,
+      default: [],
+    },
     status: {
       type: String,
       enum: ["uploaded", "parsed", "analyzed"],

@@ -26,9 +26,9 @@ export default function App() {
         }} />
         <Routes>
           <Route element={<AppLayout />}>
-            <Route path="/"          element={<HomePage />} />
-            <Route path="/ats"       element={<ATSPage />} />
-            <Route path="/interview" element={<InterviewPage />} />
+            <Route path="/"          element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+            <Route path="/ats"       element={<ProtectedRoute><ATSPage /></ProtectedRoute>} />
+            <Route path="/interview" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
             <Route path="/login"     element={<LoginPage />} />
             <Route path="/register"  element={<RegisterPage />} />
             <Route path="/dashboard" element={

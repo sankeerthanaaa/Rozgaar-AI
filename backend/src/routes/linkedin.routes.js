@@ -4,8 +4,9 @@ const {
   linkedinCallback,
   importLinkedinProfile,
 } = require("../controllers/linkedin.controller");
+const { protect } = require("../middleware/auth.middleware");
 
 router.get("/callback", linkedinCallback);
-router.post("/import", importLinkedinProfile);
+router.post("/import", protect, importLinkedinProfile);
 
 module.exports = router;

@@ -1,25 +1,71 @@
 import { useState } from 'react'
 import SuggestionCard from './SuggestionCard'
 import toast from 'react-hot-toast'
+import resumeService from '../../services/resumeService'
 
 const FILTERS = ['All', 'Improve', 'Add', 'Remove']
 
-export default function SuggestionsPanel({ suggestions = [] }) {
+export default function SuggestionsPanel({ suggestions = [], resumeId, fileName }) {
   const [filter,   setFilter]   = useState('All')
   const [applied,  setApplied]  = useState([])
+  const [downloading, setDownloading] = useState(false)
 
   const visible = filter === 'All'
     ? suggestions
     : suggestions.filter(s => s.type === filter)
 
   function handleApply(suggestion) {
-    setApplied(prev => [...prev, suggestion.id])
+    if (!applied.includes(suggestion.id)) {
+      setApplied(prev => [...prev, suggestion.id])
+    }
     toast.success(`Suggestion applied — ${suggestion.section}`)
   }
 
-  function handleApplyAll() {
-    setApplied(suggestions.map(s => s.id))
-    toast.success('All suggestions applied!')
+  async function handleApplyAllAndDownload() {
+    // 1. Mark all as applied
+    const allIds = suggestions.map(s => s.id)
+    setApplied(allIds)
+    
+    if (!resumeId) {
+      toast.error('Resume session expired. Please analyze again.')
+      return
+    }
+
+    setDownloading(true)
+    const toastId = toast.loading('Applying suggestions and generating download...')
+    
+    try {
+      // Determine output format from current fileName extension
+      let format = 'pdf'
+      if (fileName) {
+        const ext = fileName.split('.').pop().toLowerCase()
+        if (['txt', 'docx'].includes(ext)) {
+          format = ext
+        }
+      }
+
+      // Call API
+      const blob = await resumeService.downloadModified(resumeId, allIds, format)
+      
+      // Trigger download
+      const url = window.URL.createObjectURL(new Blob([blob]))
+      const link = document.createElement('a')
+      link.href = url
+      
+      const baseName = fileName ? fileName.replace(/\.[^/.]+$/, "") : "resume"
+      link.setAttribute('download', `modified_${baseName}.${format}`)
+      document.body.appendChild(link)
+      link.click()
+      link.parentNode.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      toast.success('Download completed successfully!', { id: toastId })
+    } catch (error) {
+      console.error('Download error:', error)
+      toast.error('Failed to download modified resume.', { id: toastId })
+    } finally {
+      setDownloading(false)
+    }
   }
 
   return (
@@ -87,16 +133,14 @@ export default function SuggestionsPanel({ suggestions = [] }) {
         </div>
       ))}
 
-      {/* Apply all */}
+      {/* Apply all & download */}
       <button
         className="btn btn-primary"
         style={{ width: '100%' }}
-        onClick={handleApplyAll}
-        disabled={applied.length === suggestions.length}
+        onClick={handleApplyAllAndDownload}
+        disabled={downloading}
       >
-        {applied.length === suggestions.length
-          ? 'All suggestions applied'
-          : `Apply all & download`}
+        {downloading ? 'Downloading...' : 'Apply all & download'}
       </button>
     </div>
   )

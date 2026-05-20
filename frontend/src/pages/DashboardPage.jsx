@@ -1,9 +1,11 @@
 // src/pages/DashboardPage.jsx
-import { useState }    from 'react'
+import { useState, useEffect }    from 'react'
 import { useNavigate } from 'react-router'
 import { useAuth }     from '../context/AuthContext'
 import { timeAgo }     from '../utils/formatDate'
 import { scoreBadgeVariant } from '../utils/scoreColor'
+import resumeService from '../services/resumeService'
+import toast from 'react-hot-toast'
 
 const MOCK_HISTORY = [
   {
@@ -59,22 +61,59 @@ function scoreBg(score) {
 export default function DashboardPage() {
   const { user, logout } = useAuth()
   const navigate         = useNavigate()
-  const [history, setHistory] = useState(MOCK_HISTORY)
+  const [history, setHistory] = useState([])
   const [search,  setSearch]  = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const res = await resumeService.getResumes()
+        if (res.success && res.data) {
+          const mapped = res.data.map(resume => ({
+            id: resume._id,
+            filename: resume.fileName || 'Unnamed Resume',
+            role: resume.atsResult?.jobRole || 'General',
+            atsScore: resume.atsScore || 0,
+            jdMatch: resume.atsResult?.jdMatch?.score || 0,
+            source: resume.mimeType === 'application/linkedin' ? 'linkedin' : 'upload',
+            createdAt: resume.createdAt,
+          }))
+          setHistory(mapped)
+        }
+      } catch (err) {
+        console.error("Error loading dashboard data:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [])
 
   const name      = user?.name || 'there'
   const initials  = name.slice(0, 2).toUpperCase()
-  const bestScore = Math.max(...history.map(r => r.atsScore))
-  const avgJd     = Math.round(history.reduce((a, r) => a + r.jdMatch, 0) / history.length)
+  const bestScore = history.length > 0 ? Math.max(...history.map(r => r.atsScore)) : 0
+  const avgJd     = history.length > 0 ? Math.round(history.reduce((a, r) => a + r.jdMatch, 0) / history.length) : 0
   const bestEntry = history.find(r => r.atsScore === bestScore)
 
   const filtered = history.filter(r =>
-    r.filename.toLowerCase().includes(search.toLowerCase()) ||
-    r.role.toLowerCase().includes(search.toLowerCase())
+    (r.filename || '').toLowerCase().includes(search.toLowerCase()) ||
+    (r.role || '').toLowerCase().includes(search.toLowerCase())
   )
 
-  function handleDelete(id) {
-    setHistory(prev => prev.filter(r => r.id !== id))
+  async function handleDelete(id) {
+    try {
+      const res = await resumeService.deleteResume(id)
+      if (res.success) {
+        setHistory(prev => prev.filter(r => r.id !== id))
+        toast.success("Resume deleted successfully")
+      } else {
+        toast.error("Failed to delete resume")
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error("Error deleting resume")
+    }
   }
 
   return (
@@ -200,7 +239,16 @@ export default function DashboardPage() {
               </div>
 
               {/* Rows */}
-              {filtered.length === 0 ? (
+              {loading ? (
+                <div style={{
+                  padding:   'var(--space-12)',
+                  textAlign: 'center',
+                }}>
+                  <p className="text-tertiary" style={{ fontSize: 'var(--text-sm)' }}>
+                    Loading history...
+                  </p>
+                </div>
+              ) : filtered.length === 0 ? (
                 <div style={{
                   padding:   'var(--space-12)',
                   textAlign: 'center',

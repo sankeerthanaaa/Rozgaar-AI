@@ -26,7 +26,7 @@ app.use("/uploads", express.static("uploads"));
 // Connect to MongoDB
 connectDB();
 app.use(cors({
-  origin: "http://localhost:5173",  // your Vite frontend port
+  origin: true,
   credentials: true,
 }));
 // Core Middleware
