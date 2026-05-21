@@ -2,7 +2,7 @@ const interviewService = require("../services/interview.service");
 
 const generateQuestions = async (req, res) => {
   try {
-    const { resumeText, jobDescription } = req.body;
+    const { resumeText, jobDescription, excludeQuestions } = req.body;
 
     if (!resumeText) {
       return res.status(400).json({
@@ -13,7 +13,8 @@ const generateQuestions = async (req, res) => {
 
     const questions = await interviewService.generateQuestions(
       resumeText,
-      jobDescription
+      jobDescription,
+      excludeQuestions
     );
 
     res.status(200).json({
