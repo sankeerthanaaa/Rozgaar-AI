@@ -35,23 +35,11 @@ const handleCallback = async (code) => {
 
 const importProfile = async (accessToken) => {
   try {
-    // Get basic profile
+    // OpenID Connect userinfo endpoint — works with "Sign In with LinkedIn using OpenID Connect"
+    // Replaces the deprecated /v2/me projection API (which returns 403 ACCESS_DENIED).
+    // Scopes needed: openid, profile, email
     const profileResponse = await axios.get(
-      "https://api.linkedin.com/v2/me",
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        params: {
-          projection:
-            "(id,firstName,lastName,headline,summary,positions,educations,skills)",
-        },
-      }
-    );
-
-    // Get email
-    const emailResponse = await axios.get(
-      "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))",
+      "https://api.linkedin.com/v2/userinfo",
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -60,35 +48,34 @@ const importProfile = async (accessToken) => {
     );
 
     const profile = profileResponse.data;
-    const email =
-      emailResponse.data.elements[0]["handle~"].emailAddress;
+    // userinfo field map:
+    //   sub         → unique LinkedIn ID
+    //   given_name  → first name
+    //   family_name → last name
+    //   email       → email address (no separate /v2/emailAddress call needed)
+    //   picture     → profile photo URL
 
-    // Format into resume structure
+    const firstName = profile.given_name  || "";
+    const lastName  = profile.family_name || "";
+    const email     = profile.email       || "";
+
+    // positions / educations / skills are not returned by the userinfo endpoint.
+    // They default to empty arrays — the ATS service will still analyse whatever
+    // text is available (summary, headline) and fall back gracefully.
     const resumeData = {
-      name: `${profile.firstName.localized.en_US} ${profile.lastName.localized.en_US}`,
+      name:       `${firstName} ${lastName}`.trim() || "LinkedIn User",
       email,
-      headline: profile.headline || "",
-      summary: profile.summary || "",
-      experience: profile.positions?.values?.map((pos) => ({
-        title: pos.title,
-        company: pos.company.name,
-        startDate: pos.startDate,
-        endDate: pos.endDate || "Present",
-        description: pos.summary || "",
-      })) || [],
-      education: profile.educations?.values?.map((edu) => ({
-        school: edu.schoolName,
-        degree: edu.degree || "",
-        field: edu.fieldOfStudy || "",
-        startDate: edu.startDate,
-        endDate: edu.endDate || "Present",
-      })) || [],
-      skills: profile.skills?.values?.map((s) => s.skill.name) || [],
+      headline:   "",   // not available via userinfo
+      summary:    "",   // not available via userinfo
+      picture:    profile.picture || "",
+      experience: [],   // not available via userinfo
+      education:  [],   // not available via userinfo
+      skills:     [],   // not available via userinfo
     };
 
     return resumeData;
   } catch (error) {
-    console.error("LinkedIn Import Error:", error);
+    console.error("LinkedIn Import Error:", error.response?.data || error.message);
     throw error;
   }
 };

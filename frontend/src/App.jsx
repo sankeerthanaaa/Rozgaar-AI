@@ -3,15 +3,15 @@ import { BrowserRouter, Routes, Route } from 'react-router'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './context/AuthContext'
 
-import AppLayout     from './components/layout/AppLayout'
-import HomePage      from './pages/HomePage'
-import ATSPage       from './pages/ATSPage'
-import InterviewPage from './pages/InterviewPage'
-import DashboardPage from './pages/DashboardPage'
-import ResumeDetailsPage from './pages/ResumeDetailsPage'
-import LoginPage     from './pages/LoginPage'
-import RegisterPage  from './pages/RegisterPage'
-import ProtectedRoute from './components/layout/ProtectedRoute'
+import AppLayout              from './components/layout/AppLayout'
+import HomePage               from './pages/HomePage'
+import ATSPage                from './pages/ATSPage'
+import InterviewPage          from './pages/InterviewPage'
+import DashboardPage          from './pages/DashboardPage'
+import LoginPage              from './pages/LoginPage'
+import RegisterPage           from './pages/RegisterPage'
+import ProtectedRoute         from './components/layout/ProtectedRoute'
+import LinkedInCallbackPage   from './pages/LinkedInCallbackPage'
 
 export default function App() {
   return (
@@ -26,6 +26,9 @@ export default function App() {
           }
         }} />
         <Routes>
+          {/* LinkedIn OAuth callback — no layout/auth wrapper needed */}
+          <Route path="/linkedin/callback" element={<LinkedInCallbackPage />} />
+
           <Route element={<AppLayout />}>
             <Route path="/"          element={<HomePage />} />
             <Route path="/ats"       element={<ATSPage />} />
