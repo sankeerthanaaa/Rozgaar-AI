@@ -234,24 +234,20 @@ export default function ATSPage() {
 
   // ── Role / JD handlers ───────────────────────────────
   function handleRoleChange(val) {
-    if (!requireAuth()) return
     setRole(val)
     setCustomRole('')
   }
 
   // ── Custom role and JD handlers ───────────────────────
   function handleCustomRoleChange(val) {
-    if (!requireAuth()) return
     setCustomRole(val)
   }
 
   function handleJdChange(val) {
-    if (!requireAuth()) return
     setJdText(val)
   }
 
   function handleSourceChange(val) {
-    if (!requireAuth()) return
     setSource(val)
     setFile(null)
     setFileName(null)
@@ -407,6 +403,12 @@ export default function ATSPage() {
                 placeholder="https://linkedin.com/in/yourname"
                 value={linkedInUrl}
                 onChange={e => handleLinkedInUrlChange(e.target.value)}
+                onFocus={(e) => {
+                  if (!token) {
+                    e.target.blur()
+                    requireAuth()
+                  }
+                }}
               />
               <button
                 className="btn btn-primary btn-sm"
@@ -468,6 +470,12 @@ export default function ATSPage() {
             onChange={e => handleRoleChange(e.target.value)}
             className="input"
             style={{ width: 220, height: 44, cursor: 'pointer' }}
+            onMouseDown={(e) => {
+              if (!token) {
+                e.preventDefault()
+                requireAuth()
+              }
+            }}
           >
             <option value="">Select a role</option>
             {ROLES.map(r => (
@@ -482,6 +490,12 @@ export default function ATSPage() {
               placeholder="Type your job role..."
               value={customRole}
               onChange={e => handleCustomRoleChange(e.target.value)}
+              onFocus={(e) => {
+                if (!token) {
+                  e.target.blur()
+                  requireAuth()
+                }
+              }}
               autoFocus
             />
           )}
@@ -522,6 +536,12 @@ export default function ATSPage() {
             placeholder="Paste the full job description here. We'll compare it against your resume and show you exactly which keywords you're missing..."
             value={jdText}
             onChange={e => handleJdChange(e.target.value)}
+            onFocus={(e) => {
+              if (!token) {
+                e.target.blur()
+                requireAuth()
+              }
+            }}
           />
 
           {jdText.trim().length > 0 && (

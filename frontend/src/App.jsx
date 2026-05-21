@@ -8,6 +8,7 @@ import HomePage      from './pages/HomePage'
 import ATSPage       from './pages/ATSPage'
 import InterviewPage from './pages/InterviewPage'
 import DashboardPage from './pages/DashboardPage'
+import ResumeDetailsPage from './pages/ResumeDetailsPage'
 import LoginPage     from './pages/LoginPage'
 import RegisterPage  from './pages/RegisterPage'
 import ProtectedRoute from './components/layout/ProtectedRoute'
@@ -26,11 +27,13 @@ export default function App() {
         }} />
         <Routes>
           <Route element={<AppLayout />}>
-            <Route path="/"          element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-            <Route path="/ats"       element={<ProtectedRoute><ATSPage /></ProtectedRoute>} />
-            <Route path="/interview" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
+            <Route path="/"          element={<HomePage />} />
+            <Route path="/ats"       element={<ATSPage />} />
+            <Route path="/interview" element={<InterviewPage />} />
+            <Route path="/resume/:id" element={<ProtectedRoute><ResumeDetailsPage /></ProtectedRoute>} />
             <Route path="/login"     element={<LoginPage />} />
             <Route path="/register"  element={<RegisterPage />} />
+            <Route path="/signup"    element={<RegisterPage />} />
             <Route path="/dashboard" element={
               <ProtectedRoute><DashboardPage /></ProtectedRoute>
             } />

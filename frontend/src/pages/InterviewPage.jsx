@@ -1,5 +1,7 @@
 // src/pages/InterviewPage.jsx
 import { useState, useCallback } from 'react'
+import { useNavigate } from 'react-router'
+import { useAuth } from '../context/AuthContext'
 import CategoryTabs from '../components/interview/CategoryTabs'
 import QuestionCard from '../components/interview/QuestionCard'
 import QuestionList from '../components/interview/QuestionList'
@@ -31,6 +33,8 @@ function shuffle(arr) {
 }
 
 export default function InterviewPage() {
+  const { token } = useAuth()
+  const navigate = useNavigate()
   const [role,      setRole]      = useState('')
   const [category,  setCategory]  = useState('All')
   const [loading,   setLoading]   = useState(false)
@@ -52,11 +56,21 @@ export default function InterviewPage() {
   }, [allQuestions])
 
   function handleCategoryChange(cat) {
+    if (!token) {
+      toast.error("Please log in to use this feature.")
+      navigate('/login')
+      return
+    }
     setCategory(cat)
     if (generated) buildSet(cat, allQuestions)
   }
 
   async function handleGenerate() {
+    if (!token) {
+      toast.error("Please log in to start interview prep.")
+      navigate('/login')
+      return
+    }
     setLoading(true)
     try {
       // 1. Resolve Resume Text
@@ -191,6 +205,13 @@ Practice with a timer. Analyze yourself honestly.          </p>
               border:       '1px solid var(--color-border)',
               borderRadius: 'var(--radius-md)',
               outline:      'none',
+            }}
+            onMouseDown={(e) => {
+              if (!token) {
+                e.preventDefault()
+                toast.error("Please log in to use this feature.")
+                navigate('/login')
+              }
             }}
           >
             <option value="">General questions</option>

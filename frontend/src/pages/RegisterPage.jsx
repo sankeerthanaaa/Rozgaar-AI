@@ -32,7 +32,7 @@ export default function RegisterPage() {
   }
 
   const fields = [
-    { name: "name",     label: "Full name",       type: "text",     placeholder: "Rahul Kumar"  },
+    { name: "name",     label: "Full name",       type: "text",     placeholder: "Your name"  },
     { name: "email",    label: "Email",            type: "email",    placeholder: "you@email.com" },
     { name: "password", label: "Password",         type: "password", placeholder: "••••••••"     },
     { name: "confirm",  label: "Confirm password", type: "password", placeholder: "••••••••"     },

@@ -360,7 +360,7 @@ export default function DashboardPage() {
                           color:       'var(--color-primary)',
                           borderColor: 'var(--color-primary-muted)',
                         }}
-                        onClick={() => navigate('/ats')}
+                        onClick={() => navigate(`/resume/${r.id}`)}
                       >
                         View
                       </button>
