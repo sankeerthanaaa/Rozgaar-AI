@@ -41,9 +41,38 @@ export default function InterviewPage() {
   const [generated, setGenerated] = useState(false)
   const [allQuestions, setAllQuestions] = useState([])
   const [questions, setQuestions] = useState([])
-  const [current,   setCurrent]   = useState(0)
   const [done,      setDone]      = useState([])
   const [skipped,   setSkipped]   = useState([])
+  const [current,   setCurrent]   = useState(0)
+  const [historyCount, setHistoryCount] = useState(0)
+
+  useEffect(() => {
+    const seenKey = `seen_questions_${role || 'general'}`
+    const seen = localStorage.getItem(seenKey)
+    setHistoryCount(seen ? JSON.parse(seen).length : 0)
+  }, [role])
+
+  useEffect(() => {
+    if (generated && questions.length > 0 && questions[current]) {
+      const activeQ = questions[current].text
+      const seenKey = `seen_questions_${role || 'general'}`
+      const seenRaw = localStorage.getItem(seenKey)
+      const seenQuestions = seenRaw ? JSON.parse(seenRaw) : []
+      if (!seenQuestions.includes(activeQ)) {
+        const updatedSeen = [...seenQuestions, activeQ]
+        localStorage.setItem(seenKey, JSON.stringify(updatedSeen))
+        setHistoryCount(updatedSeen.length)
+      }
+    }
+  }, [current, questions, generated, role])
+
+  function handleClearHistory() {
+    const seenKey = `seen_questions_${role || 'general'}`
+    localStorage.removeItem(seenKey)
+    setHistoryCount(0)
+    setGenerated(false)
+    toast.success("Practice history reset for this role!")
+  }
 
   const buildSet = useCallback((cat, poolToUse = allQuestions) => {
     const pool = cat === 'All'
@@ -95,7 +124,15 @@ export default function InterviewPage() {
       }
 
       // 2. Call backend generator
-      const res = await interviewService.generateQuestions(resumeText, role ? `Target role: ${role}` : "")
+      const seenKey = `seen_questions_${role || 'general'}`
+      const seenRaw = localStorage.getItem(seenKey)
+      const seenQuestions = seenRaw ? JSON.parse(seenRaw) : []
+
+      const res = await interviewService.generateQuestions(
+        resumeText, 
+        role ? `Target role: ${role}` : "",
+        seenQuestions
+      )
       if (res.success && res.data) {
         const formatted = []
         let idCounter = 1
@@ -219,6 +256,19 @@ Practice with a timer. Analyze yourself honestly.          </p>
             <option value="da">Data Analyst</option>
             <option value="pm">Product Manager</option>
           </select>
+          {historyCount > 0 && (
+            <button
+              className="btn btn-ghost"
+              onClick={handleClearHistory}
+              style={{
+                height: 40,
+                padding: '0 var(--space-4)',
+                fontSize: 'var(--text-sm)',
+              }}
+            >
+              Reset History ({historyCount})
+            </button>
+          )}
           <button
             className="btn btn-primary"
             onClick={handleGenerate}
