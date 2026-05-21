@@ -1,5 +1,5 @@
 // src/pages/ATSPage.jsx
-import { useState }         from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate }      from 'react-router'
 import { useAuth }          from '../context/AuthContext'
 import toast                from 'react-hot-toast'
@@ -91,17 +91,82 @@ export default function ATSPage() {
   const { token } = useAuth()
   const navigate  = useNavigate()
 
-  const [source,     setSource]     = useState('upload')
-  const [file,       setFile]       = useState(null)
-  const [fileName,   setFileName]   = useState(null)
-  const [role,       setRole]       = useState('')
-  const [customRole, setCustomRole] = useState('')
-  const [jdText,     setJdText]     = useState('')
-  const [linkedInUrl,setLinkedInUrl]= useState('')
-  const [loading,    setLoading]    = useState(false)
-  const [result,     setResult]     = useState(null)
+  const [source,          setSource]          = useState('upload')
+  const [file,            setFile]            = useState(null)
+  const [fileName,        setFileName]        = useState(null)
+  const [role,            setRole]            = useState('')
+  const [customRole,      setCustomRole]      = useState('')
+  const [jdText,          setJdText]          = useState('')
+  const [linkedInUrl,     setLinkedInUrl]     = useState('')
+  const [loading,         setLoading]         = useState(false)
+  const [result,          setResult]          = useState(null)
+  const [linkedInProfile, setLinkedInProfile] = useState(null) // set after OAuth callback
+  const [linkedinAnalyzed,setLinkedinAnalyzed]= useState(false) // true once user clicks Analyze on LinkedIn tab
 
   const activeRole = role === 'Others' ? customRole : role
+
+  // Pick up LinkedIn profile data stored by LinkedInCallbackPage after OAuth
+  useEffect(() => {
+    const raw = sessionStorage.getItem('linkedin_resume_data')
+    if (!raw) return
+    sessionStorage.removeItem('linkedin_resume_data')
+    try {
+      const resumeData = JSON.parse(raw)
+      setSource('linkedin')
+
+      // Bug 2 fix: the backend returns a Resume DB doc.
+      // The real name/email live under parsedData, not at the top level.
+      // Normalize into a flat shape so LinkedInImport always has the right fields.
+      const name =
+        resumeData.parsedData?.name ||
+        resumeData.name            ||
+        resumeData.given_name      ||
+        (resumeData.parsedData?.email ? resumeData.parsedData.email.split('@')[0] : null) ||
+        'LinkedIn User'
+      const email =
+        resumeData.parsedData?.email ||
+        resumeData.email             ||
+        ''
+
+      setLinkedInProfile({ name, email })   // show success card with real name
+      setResultFromResume(resumeData)
+    } catch (e) {
+      console.warn('[ATSPage] Could not parse linkedin_resume_data', e)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear the imported profile so the user can reconnect with a different account
+  function handleLinkedInReconnect() {
+    setLinkedInProfile(null)
+    setResult(null)
+    setLinkedinAnalyzed(false)
+  }
+
+  // Analyze button handler for the LinkedIn tab
+  function handleLinkedInAnalyze() {
+    if (!requireAuth()) return
+    if (!linkedInProfile) {
+      // User hasn't connected LinkedIn yet — prompt them
+      toast('Connect your LinkedIn account first to analyze your profile.', {
+        icon: '🔗',
+        position: 'top-center',
+        duration: 3000,
+        style: {
+          fontFamily:   'var(--font-body)',
+          fontSize:     'var(--text-sm)',
+          borderRadius: 'var(--radius-md)',
+          border:       '1px solid var(--color-border)',
+          color:        'var(--color-text-primary)',
+          background:   'var(--color-bg-surface)',
+          padding:      'var(--space-3) var(--space-5)',
+        },
+      })
+      return
+    }
+    // Profile already imported + analysis already ran on backend during import.
+    // Just reveal the results panel.
+    setLinkedinAnalyzed(true)
+  }
 
   // redirect immediately — no delay
   function redirectToLogin() {
@@ -253,8 +318,12 @@ export default function ATSPage() {
   function handleSourceChange(val) {
     if (!requireAuth()) return
     setSource(val)
+    // Reset ALL tab state when switching so results never bleed across tabs.
     setFile(null)
     setFileName(null)
+    setResult(null)
+    setLoading(false)
+    setLinkedinAnalyzed(false)
   }
 
   // ── Analyze ──────────────────────────────────────────
@@ -307,244 +376,141 @@ export default function ATSPage() {
         </p>
       </div>
 
-      {/* ── Source toggle ── */}
+      {/* ── Source toggle + inline input panel ── */}
       <div style={{ marginBottom: 'var(--space-5)' }}>
-        <SourceToggle active={source} onChange={handleSourceChange} />
+        <SourceToggle
+          active={source}
+          onChange={handleSourceChange}
+          onFileSelect={f => {
+            if (!requireAuth()) return
+            processFile(f)
+          }}
+          importedProfile={linkedInProfile}
+          onReconnect={handleLinkedInReconnect}
+        />
       </div>
 
-      {/* ── Upload zone (inline — no FileDropzone import) ── */}
+      {/* ── Role + JD + Analyze card — upload tab only ── */}
       {source === 'upload' && (
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <div
-            className="dropzone"
-            onClick={handleDropzoneClick}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-          >
-            {/* hidden file input */}
-            <input
-              id="resume-file-input"
-              type="file"
-              accept=".pdf,.doc,.docx,.txt"
-              style={{ display: 'none' }}
-              onChange={handleFileInputChange}
-            />
+        <div className="card" style={{ marginBottom: 'var(--space-8)' }}>
 
-            <svg
-              width="36" height="36" viewBox="0 0 36 36" fill="none"
-              style={{ margin: '0 auto var(--space-3)' }}
-            >
-              <rect width="36" height="36" rx="10" fill="var(--color-primary-subtle)"/>
-              <path d="M18 24v-9M15 18l3-3 3 3"
-                stroke="var(--color-primary)" strokeWidth="1.8"
-                strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M12 27h12"
-                stroke="var(--color-primary)" strokeWidth="1.5"
-                strokeLinecap="round" opacity=".4"/>
-            </svg>
-
-            {fileName ? (
-              <>
-                <p style={{
-                  fontSize:   'var(--text-sm)',
-                  fontWeight: 'var(--weight-medium)',
-                  color:      'var(--color-primary)',
-                  marginBottom:'var(--space-1)',
-                }}>
-                  {fileName}
-                </p>
-                <p className="text-tertiary" style={{ fontSize: 'var(--text-xs)' }}>
-                  Click to change file
-                </p>
-              </>
-            ) : (
-              <>
-                <p style={{
-                  fontSize:    'var(--text-sm)',
-                  fontWeight:  'var(--weight-medium)',
-                  color:       'var(--color-text-primary)',
-                  marginBottom:'var(--space-1)',
-                }}>
-                  Drag &amp; drop your resume here
-                </p>
-                <p className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginBottom: 'var(--space-3)' }}>
-                  PDF, Word, or TXT · max 5MB
-                </p>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={e => { e.stopPropagation(); handleDropzoneClick() }}
-                >
-                  Browse files
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── LinkedIn import (inline — no LinkedInImport import) ── */}
-      {source === 'linkedin' && (
-        <div style={{ marginBottom: 'var(--space-5)' }}>
+          {/* Target role row */}
           <div style={{
-            background:   'var(--color-bg-surface-2)',
-            border:       '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-xl)',
-            padding:      'var(--space-8)',
-            textAlign:    'center',
+            display:      'flex',
+            alignItems:   'center',
+            flexWrap:     'wrap',
+            gap:          'var(--space-3)',
+            marginBottom: 'var(--space-5)',
           }}>
-            <p style={{
-              fontSize:     'var(--text-sm)',
-              fontWeight:   'var(--weight-medium)',
-              color:        'var(--color-text-primary)',
-              marginBottom: 'var(--space-4)',
+            <label style={{
+              fontSize:   'var(--text-sm)',
+              fontWeight: 'var(--weight-medium)',
+              color:      'var(--color-text-secondary)',
+              whiteSpace: 'nowrap',
             }}>
-              Paste your LinkedIn profile URL
-            </p>
+              Target role
+            </label>
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)', maxWidth: 480, margin: '0 auto' }}>
+            <select
+              value={role}
+              onChange={e => handleRoleChange(e.target.value)}
+              className="input"
+              style={{ width: 220, height: 44, cursor: 'pointer' }}
+            >
+              <option value="">Select a role</option>
+              {ROLES.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+
+            {role === 'Others' && (
               <input
                 className="input"
-                placeholder="https://linkedin.com/in/yourname"
-                value={linkedInUrl}
-                onChange={e => handleLinkedInUrlChange(e.target.value)}
+                style={{ width: 220 }}
+                placeholder="Type your job role..."
+                value={customRole}
+                onChange={e => handleCustomRoleChange(e.target.value)}
+                autoFocus
               />
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={handleLinkedInImport}
+            )}
+          </div>
+
+          {/* Divider */}
+          <div style={{
+            height:       1,
+            background:   'var(--color-border-surface)',
+            marginBottom: 'var(--space-5)',
+          }} />
+
+          {/* Job description */}
+          <div style={{ marginBottom: 'var(--space-5)' }}>
+            <label style={{
+              display:      'block',
+              fontSize:     'var(--text-sm)',
+              fontWeight:   'var(--weight-medium)',
+              color:        'var(--color-text-secondary)',
+              marginBottom: 'var(--space-2)',
+            }}>
+              Job description
+              <span
+                className="text-tertiary"
+                style={{
+                  fontSize:   'var(--text-xs)',
+                  fontWeight: 'var(--weight-regular)',
+                  marginLeft: 'var(--space-2)',
+                }}
               >
-                Import
-              </button>
-            </div>
+                optional — paste the JD to get a match score
+              </span>
+            </label>
 
-            <p className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-3)' }}>
-              Or upload your LinkedIn PDF export below
-            </p>
+            <textarea
+              className="input textarea"
+              rows={5}
+              placeholder="Paste the full job description here. We'll compare it against your resume and show you exactly which keywords you're missing..."
+              value={jdText}
+              onChange={e => handleJdChange(e.target.value)}
+            />
 
-            {/* LinkedIn PDF upload — auth guarded via handleDropzoneClick */}
-            <div
-              className="dropzone"
-              style={{ marginTop: 'var(--space-4)', padding: 'var(--space-5)' }}
-              onClick={handleDropzoneClick}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-            >
-              <input
-                id="resume-file-input"
-                type="file"
-                accept=".pdf,.doc,.docx,.txt"
-                style={{ display: 'none' }}
-                onChange={handleFileInputChange}
-              />
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
-                {fileName ? fileName : 'Drop LinkedIn PDF export here'}
+            {jdText.trim().length > 0 && (
+              <p className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>
+                {jdText.trim().split(/\s+/).length} words · JD match will run automatically
               </p>
-            </div>
+            )}
+          </div>
+
+          {/* Analyze button */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleAnalyze}
+              disabled={loading}
+            >
+              {loading ? 'Analyzing…' : 'Analyze resume'}
+            </button>
           </div>
         </div>
       )}
 
-      {/* ── Role + JD card ── */}
-      <div className="card" style={{ marginBottom: 'var(--space-8)' }}>
-
-        {/* Target role row */}
-        <div style={{
-          display:      'flex',
-          alignItems:   'center',
-          flexWrap:     'wrap',
-          gap:          'var(--space-3)',
-          marginBottom: 'var(--space-5)',
-        }}>
-          <label style={{
-            fontSize:   'var(--text-sm)',
-            fontWeight: 'var(--weight-medium)',
-            color:      'var(--color-text-secondary)',
-            whiteSpace: 'nowrap',
-          }}>
-            Target role
-          </label>
-
-          <select
-            value={role}
-            onChange={e => handleRoleChange(e.target.value)}
-            className="input"
-            style={{ width: 220, height: 44, cursor: 'pointer' }}
-          >
-            <option value="">Select a role</option>
-            {ROLES.map(r => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-
-          {role === 'Others' && (
-            <input
-              className="input"
-              style={{ width: 220 }}
-              placeholder="Type your job role..."
-              value={customRole}
-              onChange={e => handleCustomRoleChange(e.target.value)}
-              autoFocus
-            />
-          )}
-        </div>
-
-        {/* Divider */}
-        <div style={{
-          height:       1,
-          background:   'var(--color-border-surface)',
-          marginBottom: 'var(--space-5)',
-        }} />
-
-        {/* Job description */}
-        <div style={{ marginBottom: 'var(--space-5)' }}>
-          <label style={{
-            display:      'block',
-            fontSize:     'var(--text-sm)',
-            fontWeight:   'var(--weight-medium)',
-            color:        'var(--color-text-secondary)',
-            marginBottom: 'var(--space-2)',
-          }}>
-            Job description
-            <span
-              className="text-tertiary"
-              style={{
-                fontSize:   'var(--text-xs)',
-                fontWeight: 'var(--weight-regular)',
-                marginLeft: 'var(--space-2)',
-              }}
-            >
-              optional — paste the JD to get a match score
-            </span>
-          </label>
-
-          <textarea
-            className="input textarea"
-            rows={5}
-            placeholder="Paste the full job description here. We'll compare it against your resume and show you exactly which keywords you're missing..."
-            value={jdText}
-            onChange={e => handleJdChange(e.target.value)}
-          />
-
-          {jdText.trim().length > 0 && (
-            <p className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>
-              {jdText.trim().split(/\s+/).length} words · JD match will run automatically
-            </p>
-          )}
-        </div>
-
-        {/* Analyze button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      {/* ── LinkedIn Analyze button — linkedin tab only ── */}
+      {source === 'linkedin' && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-8)' }}>
           <button
+            id="linkedin-analyze-btn"
             className="btn btn-primary"
-            onClick={handleAnalyze}
+            onClick={handleLinkedInAnalyze}
             disabled={loading}
           >
-            {loading ? 'Analyzing…' : 'Analyze resume'}
+            {linkedInProfile ? 'View analysis' : 'Analyze profile'}
           </button>
         </div>
-      </div>
+      )}
 
       {/* ── Results ── */}
-      {(loading || result) && (
+      {/* Upload tab: show when loading or result exists */}
+      {/* LinkedIn tab: show only after user explicitly clicks Analyze */}
+      {((source === 'upload' && (loading || result)) ||
+        (source === 'linkedin' && linkedinAnalyzed && result)) && (
         <div style={{
           display:             'grid',
           gridTemplateColumns: '1fr 1fr',
