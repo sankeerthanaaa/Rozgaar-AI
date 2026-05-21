@@ -2,8 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const cookieParser = require("cookie-parser");
+const passport = require("passport");
 
 dotenv.config();
+
+require("./src/config/passport");
 
 const connectDB = require("./src/config/db");
 
@@ -34,6 +37,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use(passport.initialize());
 app.use("/api", apiLimiter);
 
 // Health check

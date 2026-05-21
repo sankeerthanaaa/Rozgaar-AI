@@ -12,6 +12,8 @@ import LoginPage              from './pages/LoginPage'
 import RegisterPage           from './pages/RegisterPage'
 import ProtectedRoute         from './components/layout/ProtectedRoute'
 import LinkedInCallbackPage   from './pages/LinkedInCallbackPage'
+import ResumeDetailsPage      from './pages/ResumeDetailsPage'
+import AuthSuccess            from './pages/AuthSuccess'
 
 export default function App() {
   return (
@@ -37,6 +39,7 @@ export default function App() {
             <Route path="/login"     element={<LoginPage />} />
             <Route path="/register"  element={<RegisterPage />} />
             <Route path="/signup"    element={<RegisterPage />} />
+            <Route path="/auth-success" element={<AuthSuccess />} />
             <Route path="/dashboard" element={
               <ProtectedRoute><DashboardPage /></ProtectedRoute>
             } />
