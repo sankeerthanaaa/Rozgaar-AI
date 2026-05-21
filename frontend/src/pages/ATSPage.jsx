@@ -299,24 +299,20 @@ export default function ATSPage() {
 
   // ── Role / JD handlers ───────────────────────────────
   function handleRoleChange(val) {
-    if (!requireAuth()) return
     setRole(val)
     setCustomRole('')
   }
 
   // ── Custom role and JD handlers ───────────────────────
   function handleCustomRoleChange(val) {
-    if (!requireAuth()) return
     setCustomRole(val)
   }
 
   function handleJdChange(val) {
-    if (!requireAuth()) return
     setJdText(val)
   }
 
   function handleSourceChange(val) {
-    if (!requireAuth()) return
     setSource(val)
     // Reset ALL tab state when switching so results never bleed across tabs.
     setFile(null)

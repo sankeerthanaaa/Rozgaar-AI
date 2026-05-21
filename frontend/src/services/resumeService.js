@@ -34,6 +34,11 @@ const resumeService = {
     return res.data;
   },
 
+  async getResumeById(id) {
+    const res = await api.get(`/resume/${id}`);
+    return res.data;
+  },
+
   async downloadModified(resumeId, appliedIds = [], format = "pdf") {
     const res = await api.post(
       "/resume/download-modified",
