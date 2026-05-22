@@ -30,7 +30,7 @@ connectDB();
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'https://rozgaar-ai.vercel.app'
+    'https://rozgaar-ai-a1so.vercel.app/'
   ],
   credentials: true,
 }));
