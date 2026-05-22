@@ -1,6 +1,6 @@
 const resumeService = require("../services/storage.service");
 const fileUploadService = require("../services/fileUpload.service");
-const parserService = require("../services/parser.service");
+const { parseResumeFromBuffer } = require("../services/parser.service");
 const { analyzeATS } = require("../services/ats.service");
 const Resume = require("../models/Resume.model");
 
@@ -24,8 +24,8 @@ const uploadResume = async (req, res) => {
       }
     }
 
-    const fileData = await resumeService.saveFile(req.file);
-    const parsedData = await parserService.parseResume(req.file.path);
+    const fileData   = await resumeService.saveFile(req.file);
+    const parsedData = await parseResumeFromBuffer(req.file.buffer, req.file.originalname);
 
     let atsResultData = null;
     let atsScoreVal = 0;
@@ -51,6 +51,7 @@ const uploadResume = async (req, res) => {
       userId: req.user.id,
       fileName: fileData.fileName,
       fileUrl: fileData.fileUrl,
+      publicId: fileData.publicId,
       fileSize: fileData.fileSize,
       mimeType: fileData.mimeType,
       parsedText: parsedData.text,
@@ -135,14 +136,12 @@ const deleteResume = async (req, res) => {
     }
 
     try {
-      const fileName = resume.fileUrl.split("/uploads/")[1];
-      if (fileName) {
-        const path = require("path");
-        const filePath = path.join(__dirname, "../../uploads", fileName);
-        fileUploadService.deleteFile(filePath);
+      const publicId = resume.publicId;
+      if (publicId) {
+        await fileUploadService.deleteFromCloudinary(publicId);
       }
     } catch (err) {
-      console.error("Failed to delete physical file:", err.message);
+      console.error("Failed to delete file from Cloudinary:", err.message);
     }
 
     await Resume.findByIdAndDelete(req.params.id);

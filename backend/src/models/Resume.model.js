@@ -15,6 +15,10 @@ const ResumeSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    publicId: {
+      type: String,
+      default: "",
+    },
     fileSize: {
       type: Number,
     },

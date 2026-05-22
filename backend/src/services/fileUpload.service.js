@@ -1,75 +1,70 @@
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+const multer  = require("multer");
+const streamifier = require("streamifier");
+const cloudinary  = require("../config/cloudinary");
 require("dotenv").config();
 
-// Create uploads folder if it doesn't exist
-const uploadsDir = path.join(__dirname, "../../uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// Use memory storage — file goes into buffer, never touches local disk
+const storage = multer.memoryStorage();
 
-// Storage config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix =
-      Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname)
-    );
-  },
-});
-
-// File filter - PDF, DOCX, DOC, TXT
+// File filter — PDF, DOCX, DOC, TXT
 const fileFilter = (req, file, cb) => {
   const allowedMimeTypes = [
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/msword",
-    "text/plain"
+    "text/plain",
   ];
-  if (allowedMimeTypes.includes(file.mimetype) || 
-      /\.(pdf|doc|docx|txt)$/i.test(file.originalname)) {
+  if (
+    allowedMimeTypes.includes(file.mimetype) ||
+    /\.(pdf|doc|docx|txt)$/i.test(file.originalname)
+  ) {
     cb(null, true);
   } else {
     cb(new Error("Only PDF, DOC, DOCX, and TXT files are allowed"), false);
   }
 };
 
-// Multer upload instance
+// Multer upload instance (memory, 5 MB cap)
 const upload = multer({
   storage,
   fileFilter,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB max
-  },
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-// Delete file from uploads folder
-const deleteFile = (filePath) => {
+/**
+ * Upload a buffer to Cloudinary and return the result.
+ * Files are stored in the "rozgaar-resumes" folder as raw resources.
+ */
+const uploadToCloudinary = (buffer, originalName) => {
+  return new Promise((resolve, reject) => {
+    const publicId = `rozgaar-resumes/${Date.now()}-${originalName.replace(/\s+/g, "_")}`;
+
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        public_id: publicId,
+        overwrite: false,
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+
+    streamifier.createReadStream(buffer).pipe(uploadStream);
+  });
+};
+
+/**
+ * Delete a file from Cloudinary by its public_id.
+ * resource_type must be "raw" for non-image files.
+ */
+const deleteFromCloudinary = async (publicId) => {
   try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log(`File deleted: ${filePath}`);
-    }
-  } catch (error) {
-    console.error("Delete File Error:", error);
-    throw error;
+    await cloudinary.uploader.destroy(publicId, { resource_type: "raw" });
+  } catch (err) {
+    console.error("Cloudinary delete error:", err.message);
   }
 };
 
-// Get file buffer from path
-const getFileBuffer = (filePath) => {
-  try {
-    return fs.readFileSync(filePath);
-  } catch (error) {
-    console.error("Get File Buffer Error:", error);
-    throw error;
-  }
-};
-
-module.exports = { upload, deleteFile, getFileBuffer };
+module.exports = { upload, uploadToCloudinary, deleteFromCloudinary };

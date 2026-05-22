@@ -182,6 +182,19 @@ function generateDynamicRoleSpecificQuestions(role, skills) {
   return list;
 }
 
+/**
+ * Strips markdown fences and extracts the first valid JSON object from
+ * an AI response string. Throws if nothing parseable is found.
+ */
+function extractJSON(text) {
+  text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return JSON.parse(jsonMatch[0]);
+  }
+  throw new Error('No valid JSON object found in AI response');
+}
+
 const generateQuestions = async (resumeText, jobDescription, excludeQuestions = []) => {
   try {
     const prompt = `
@@ -233,21 +246,18 @@ const generateQuestions = async (resumeText, jobDescription, excludeQuestions = 
     try {
       const responseText = await getAIResponse(
         prompt,
-        "You are an expert technical interviewer. Always respond in valid JSON format only, no extra text."
+        "You are an expert technical interviewer. You must respond with ONLY a valid JSON object. No markdown, no code fences, no explanation text before or after. No dashes, no bullet points. Start your response with { and end with }."
       );
-      
-      let parsed = responseText;
-      if (typeof responseText === "string") {
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          parsed = JSON.parse(responseText);
-        }
+
+      try {
+        const parsed = extractJSON(responseText);
+        return parsed;
+      } catch (parseErr) {
+        console.log("AI response was not valid JSON, using local question generator:", parseErr.message);
+        return runFallbackQuestions(resumeText, jobDescription, excludeQuestions);
       }
-      return parsed;
     } catch (aiError) {
-      console.warn("AI service failed in generateQuestions. Using local fallback question generator:", aiError.message);
+      console.log("AI unavailable, using local question generator:", aiError.message);
       return runFallbackQuestions(resumeText, jobDescription, excludeQuestions);
     }
   } catch (error) {

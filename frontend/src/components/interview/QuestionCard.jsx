@@ -7,7 +7,7 @@ const CATEGORY_STYLE = {
   'Gap-based': { bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
 }
 
-export default function QuestionCard({ question, index, total, onNext, onPrev, onSkip }) {
+export default function QuestionCard({ question, index, total, onNext, onPrev, onSkip, onFinish }) {
   if (!question) return null
   const style = CATEGORY_STYLE[question.category] || CATEGORY_STYLE.Technical
 
@@ -93,12 +93,26 @@ export default function QuestionCard({ question, index, total, onNext, onPrev, o
         </button>
 
         <button
-          className="btn btn-primary btn-sm"
-          style={{ flex: 1 }}
-          onClick={onNext}
-          disabled={index === total - 1}
+          className={`btn btn-sm${index === total - 1 ? ' btn-success' : ' btn-primary'}`}
+          style={{
+            flex: 1,
+            ...(index === total - 1 && {
+              background: 'var(--color-success)',
+              borderColor: 'var(--color-success)',
+              color: '#fff',
+            }),
+          }}
+          onClick={() => {
+            if (index === total - 1) {
+              onNext()
+              toast.success('Practice session complete! Great work 🎉')
+              if (onFinish) onFinish()
+            } else {
+              onNext()
+            }
+          }}
         >
-          Next
+          {index === total - 1 ? 'Finish ✓' : 'Next'}
         </button>
       </div>
     </div>
