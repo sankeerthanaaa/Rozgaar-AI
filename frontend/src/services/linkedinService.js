@@ -8,11 +8,9 @@ const linkedinService = {
    */
   redirectToLinkedIn() {
     const clientId    = import.meta.env.VITE_LINKEDIN_CLIENT_ID
-    const redirectUri = encodeURIComponent('http://localhost:5173/linkedin/callback')
+    const redirectUri = encodeURIComponent('https://rozgaar-ai-a1so.vercel.app/linkedin/callback')
     const scope       = encodeURIComponent('openid profile email')
     const state       = crypto.randomUUID()          // CSRF guard
-
-    // Persist state so the callback page can verify it
     sessionStorage.setItem('linkedin_oauth_state', state)
 
     const authUrl =
