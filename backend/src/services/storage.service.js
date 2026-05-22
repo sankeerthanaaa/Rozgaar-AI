@@ -1,59 +1,37 @@
-const fs = require("fs");
-const path = require("path");
-require("dotenv").config();
+const { uploadToCloudinary } = require("./fileUpload.service");
 
-// For now we store locally
-// Later can be swapped with AWS S3
-
-const uploadsDir = path.join(__dirname, "../../uploads");
-
-// Save file locally
+/**
+ * Upload a file buffer to Cloudinary and return a normalised file info object.
+ * Replaces the old local-disk saveFile() implementation.
+ */
 const saveFile = async (file) => {
   try {
-    const fileUrl = `${process.env.NODE_ENV === "production" 
-      ? "https://your-domain.com" 
-      : "http://localhost:" + (process.env.PORT || 5000)}/uploads/${file.filename}`;
-
+    const result = await uploadToCloudinary(file.buffer, file.originalname);
     return {
-      fileName: file.originalname,
-      fileUrl,
-      filePath: file.path,
-      fileSize: file.size,
-      mimeType: file.mimetype,
+      fileName:   file.originalname,
+      fileUrl:    result.secure_url,
+      publicId:   result.public_id,   // stored in DB so we can delete later
+      fileSize:   file.size,
+      mimeType:   file.mimetype,
     };
   } catch (error) {
-    console.error("Save File Error:", error);
+    console.error("Save File (Cloudinary) Error:", error);
     throw error;
   }
 };
 
-// Delete file locally
-const deleteFile = async (fileName) => {
+/**
+ * Delete a file from Cloudinary by public_id.
+ */
+const deleteFile = async (publicId) => {
+  const { deleteFromCloudinary } = require("./fileUpload.service");
   try {
-    const filePath = path.join(uploadsDir, fileName);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      return { success: true, message: "File deleted successfully" };
-    }
-    return { success: false, message: "File not found" };
+    await deleteFromCloudinary(publicId);
+    return { success: true, message: "File deleted from Cloudinary" };
   } catch (error) {
-    console.error("Delete File Error:", error);
-    throw error;
+    console.error("Delete File (Cloudinary) Error:", error);
+    return { success: false, message: error.message };
   }
 };
 
-// Get file path
-const getFilePath = (fileName) => {
-  try {
-    const filePath = path.join(uploadsDir, fileName);
-    if (fs.existsSync(filePath)) {
-      return filePath;
-    }
-    throw new Error("File not found");
-  } catch (error) {
-    console.error("Get File Path Error:", error);
-    throw error;
-  }
-};
-
-module.exports = { saveFile, deleteFile, getFilePath };
+module.exports = { saveFile, deleteFile };

@@ -1,5 +1,5 @@
 // src/pages/InterviewPage.jsx
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { useAuth } from '../context/AuthContext'
 import CategoryTabs from '../components/interview/CategoryTabs'

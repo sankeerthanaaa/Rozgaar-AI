@@ -25,7 +25,6 @@ const { errorHandler, notFound } = require("./src/middleware/errorHandler");
 const { apiLimiter } = require("./src/middleware/rateLimiter");
 
 const app = express();
-app.use("/uploads", express.static("uploads"));
 // Connect to MongoDB
 connectDB();
 app.use(cors({
@@ -59,10 +58,19 @@ app.use("/api/linkedin", linkedinRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
+const { getActiveAIService } = require("./src/services/ai.service");
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+
+  const aiService = getActiveAIService();
+  if (aiService) {
+    console.log(`✅ AI Service: ${aiService}`);
+  } else {
+    console.log(`⚠️  AI Service: Local fallback (no API keys found — add GROQ_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY to .env)`);
+  }
 });
 
-module.exports = app;
+module.exports = app;

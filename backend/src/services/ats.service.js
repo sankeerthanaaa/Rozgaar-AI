@@ -89,6 +89,21 @@ function isSkillInResume(targetSkill, resumeTextNormalized, rawResumeText) {
   return false;
 }
 
+/**
+ * Strips markdown fences and extracts the first valid JSON object from
+ * an AI response string. Throws if nothing parseable is found.
+ */
+function extractJSON(text) {
+  // Remove markdown code fences
+  text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+  // Find the outermost JSON object
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return JSON.parse(jsonMatch[0]);
+  }
+  throw new Error('No valid JSON object found in AI response');
+}
+
 const analyzeATS = async (resumeText, jobDescription, keywords) => {
   try {
     const jdContext = jobDescription ? `\n\nTarget Job Description:\n${jobDescription}` : '';
@@ -135,21 +150,18 @@ const analyzeATS = async (resumeText, jobDescription, keywords) => {
     try {
       const responseText = await getAIResponse(
         prompt,
-        "You are an expert resume analyzer. Always respond in valid JSON format only, no extra text."
+        "You are an expert resume analyzer. You must respond with ONLY a valid JSON object. No markdown, no code fences, no explanation text before or after. No dashes, no bullet points. Start your response with { and end with }."
       );
-      
-      let parsed = responseText;
-      if (typeof responseText === "string") {
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          parsed = JSON.parse(responseText);
-        }
+
+      try {
+        const parsed = extractJSON(responseText);
+        return parsed;
+      } catch (parseErr) {
+        console.log("AI response was not valid JSON, using local fallback:", parseErr.message);
+        return runFallbackATS(resumeText, jobDescription, keywords);
       }
-      return parsed;
     } catch (aiError) {
-      console.warn("AI service failed or keys missing in analyzeATS. Using local fallback keyword-matching:", aiError.message);
+      console.log("AI unavailable in analyzeATS, using local fallback:", aiError.message);
       return runFallbackATS(resumeText, jobDescription, keywords);
     }
   } catch (error) {
