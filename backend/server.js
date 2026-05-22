@@ -25,6 +25,7 @@ const { errorHandler, notFound } = require("./src/middleware/errorHandler");
 const { apiLimiter } = require("./src/middleware/rateLimiter");
 
 const app = express();
+app.set('trust proxy', 1)
 // Connect to MongoDB
 connectDB();
 app.use(cors({
