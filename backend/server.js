@@ -28,7 +28,10 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 app.use(cors({
-  origin: true,
+  origin: [
+    'http://localhost:5173',
+    'https://rozgaar-ai.vercel.app'
+  ],
   credentials: true,
 }));
 // Core Middleware
@@ -73,4 +76,4 @@ app.listen(PORT, () => {
   }
 });
 
-module.exports = app;
+module.exports = app;

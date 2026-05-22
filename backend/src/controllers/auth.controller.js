@@ -18,6 +18,13 @@ const register = async (req, res) => {
     const user = await User.create({ name, email, password });
     const accessToken = generateToken(user._id);
 
+    res.cookie('token', accessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     res.status(201).json({
       success: true,
       accessToken,
@@ -45,6 +52,13 @@ const login = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid email or password" });
 
     const accessToken = generateToken(user._id);
+
+    res.cookie('token', accessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
 
     res.json({
       success: true,
