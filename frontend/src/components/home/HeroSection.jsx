@@ -20,15 +20,7 @@ export default function HeroSection() {
     <section style={{
       background: 'radial-gradient(ellipse 80% 55% at 50% -5%, #DDD9FF 0%, transparent 70%), radial-gradient(ellipse 40% 80% at -5% 60%, #DDD9FF 0%, transparent 55%), radial-gradient(ellipse 40% 80% at 105% 60%, #DDD9FF 0%, transparent 55%)',
     }}>
-      <div style={{
-        maxWidth:            1200,
-        margin:              '0 auto',
-        padding:             '52px 48px 44px',
-        display:             'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap:                 24,
-        alignItems:          'center',
-      }}>
+      <div className="hero-grid">
 
         {/* LEFT */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -86,7 +78,7 @@ export default function HeroSection() {
         </div>
 
         {/* RIGHT */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 16 }}>
+        <div className="hero-right" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 16 }}>
           <ScoreCardPreview />
           <BottomCards />
         </div>
