@@ -16,7 +16,7 @@ export default function QuickTips() {
           Quick ways to boost your score
         </h2>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-5)' }}>
+        <div className="quick-tips-grid">
 
           {/* Purple card */}
           <div className="card card-purple" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>

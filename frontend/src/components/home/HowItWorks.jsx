@@ -46,7 +46,7 @@ export default function HowItWorks() {
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-12)', alignItems: 'start' }}>
+        <div className="how-it-works-grid">
 
           {/* Steps list */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>

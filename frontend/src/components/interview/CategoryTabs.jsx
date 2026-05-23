@@ -2,7 +2,7 @@ const TABS = ['All', 'Technical', 'Behavioural', 'Gap-based']
 
 export default function CategoryTabs({ active, onChange }) {
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+    <>
       {TABS.map(tab => (
         <button key={tab}
           onClick={() => onChange(tab)}
@@ -17,11 +17,12 @@ export default function CategoryTabs({ active, onChange }) {
               : 'var(--color-primary-subtle)',
             color: active === tab ? '#fff' : 'var(--color-primary)',
             transition: 'background var(--transition-fast)',
+            whiteSpace: 'nowrap',
           }}
         >
           {tab}
         </button>
       ))}
-    </div>
+    </>
   )
 }

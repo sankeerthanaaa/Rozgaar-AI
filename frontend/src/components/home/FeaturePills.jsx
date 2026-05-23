@@ -37,17 +37,9 @@ const FEATURES = [
 
 export default function FeaturePills() {
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-      borderTop:    '1px solid var(--color-border)',
-      borderBottom: '1px solid var(--color-border)',
-    }}>
-      {FEATURES.map((f, i) => (
-        <div key={f.title} style={{
-          padding: 'var(--space-6) var(--space-8)',
-          display: 'flex', gap: 'var(--space-4)', alignItems: 'flex-start',
-          borderRight: i < 2 ? '1px solid var(--color-border)' : 'none',
-        }}>
+    <div className="feature-pills-grid">
+      {FEATURES.map((f) => (
+        <div key={f.title} className="feature-pill-item">
           <div style={{
             width: 36, height: 36, borderRadius: 'var(--radius-md)',
             background: f.iconBg, display: 'flex',
