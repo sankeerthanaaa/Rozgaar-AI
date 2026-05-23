@@ -433,9 +433,6 @@ export default function DashboardPage() {
             <p className="text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
               {user?.email || 'user@email.com'}
             </p>
-            <p className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginTop: 2 }}>
-              Member since Jan 2025
-            </p>
           </div>
 
           {/* Profile details */}
