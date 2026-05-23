@@ -100,7 +100,7 @@ The app uses a **multi-provider AI system with automatic fallback**:
 
 ```
 1st → Groq (llama3-8b-8192)     ← fastest, most free requests (14,400/day)
-2th → Local fallback             ← built-in question bank, keyword matching
+2nd → Local fallback             ← built-in question bank, keyword matching
 ```
 
 - Only **one API key is needed** — add any one and it works automatically
