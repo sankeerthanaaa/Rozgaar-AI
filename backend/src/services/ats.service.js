@@ -4,7 +4,11 @@ const {
   runDeterministicATSScoring,
   buildDeterministicResult,
 } = require("./atsScoring.engine");
-const { generateSuggestions } = require("./atsSuggestions.service");
+const {
+  generateSuggestions,
+  getLocalFallbackSuggestions,
+  normalizeSuggestionsList,
+} = require("./atsSuggestions.service");
 
 async function getCachedResult(hash) {
   const cached = await ATSCache.findOne({ hash }).lean();
@@ -33,8 +37,18 @@ const analyzeATS = async (resumeText, jobDescription = "", keywords = [], option
 
   if (!skipCache) {
     const cached = await getCachedResult(hash);
-    if (cached) {
-      return { ...cached, cacheHit: true, analysisHash: hash };
+    if (
+      cached &&
+      cached.suggestionsVersion === 4 &&
+      Array.isArray(cached.suggestions) &&
+      cached.suggestions.length > 0
+    ) {
+      return {
+        ...cached,
+        suggestions: normalizeSuggestionsList(cached.suggestions),
+        cacheHit: true,
+        analysisHash: hash,
+      };
     }
   }
 
@@ -57,17 +71,34 @@ const analyzeATS = async (resumeText, jobDescription = "", keywords = [], option
     );
   }
 
-  const finalSuggestions = (suggestionsPayload.suggestions || []).map((s, idx) => ({
-    ...s,
-    id: idx + 1,
-  }));
+  let finalSuggestions = normalizeSuggestionsList(suggestionsPayload.suggestions || []);
+
+  if (finalSuggestions.length === 0) {
+    const fallback = getLocalFallbackSuggestions(
+      scores,
+      resumeText,
+      jobDescription,
+      keywords?.[0] || ""
+    );
+    finalSuggestions = normalizeSuggestionsList(fallback.suggestions || []);
+    suggestionsPayload = fallback;
+  }
+
+  finalSuggestions = finalSuggestions
+    .slice(0, 3)
+    .map((s, idx) => ({ ...s, id: idx + 1 }));
 
   const result = {
     ...deterministic,
     suggestions: finalSuggestions,
+    missingKeywords: suggestionsPayload.missingKeywords || scores.missingKeywords || [],
+    roleAlignmentTips: suggestionsPayload.roleAlignmentTips || [],
+    suggestionSummary: suggestionsPayload.summary || "",
+    suggestionSource: suggestionsPayload.source || "fallback",
     strengths: suggestionsPayload.strengths || [],
     weaknesses: suggestionsPayload.weaknesses || [],
     improvementTips: suggestionsPayload.improvementTips || [],
+    suggestionsVersion: 4,
     analysisHash: hash,
     cacheHit: false,
   };
