@@ -115,12 +115,7 @@ export default function ResumeDetailsPage() {
               Analysis details for <strong>{resume.fileName}</strong>
             </p>
           </div>
-          <button
-            className="btn btn-secondary"
-            onClick={() => window.open(resume.fileUrl, '_blank')}
-          >
-            📄 View Original Resume
-          </button>
+          
         </div>
       </div>
 
