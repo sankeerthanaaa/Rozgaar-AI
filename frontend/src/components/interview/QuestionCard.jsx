@@ -79,7 +79,6 @@ export default function QuestionCard({ question, index, total, onNext, onPrev, o
           Previous
         </button>
 
-        {/* ← new skip button */}
         <button
           className="btn btn-ghost btn-sm"
           style={{
@@ -92,14 +91,15 @@ export default function QuestionCard({ question, index, total, onNext, onPrev, o
           Skip
         </button>
 
-        <button
-          className="btn btn-primary btn-sm"
-          style={{ flex: 1 }}
-          onClick={onNext}
-          disabled={index === total - 1}
-        >
-          Next
-        </button>
+        {index < total - 1 && (
+          <button
+            className="btn btn-primary btn-sm"
+            style={{ flex: 1 }}
+            onClick={onNext}
+          >
+            Next
+          </button>
+        )}
       </div>
     </div>
   )

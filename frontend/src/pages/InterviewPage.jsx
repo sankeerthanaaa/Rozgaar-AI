@@ -1,5 +1,5 @@
 // src/pages/InterviewPage.jsx
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { useAuth } from '../context/AuthContext'
 import CategoryTabs from '../components/interview/CategoryTabs'
@@ -45,6 +45,7 @@ export default function InterviewPage() {
   const [skipped,   setSkipped]   = useState([])
   const [current,   setCurrent]   = useState(0)
   const [historyCount, setHistoryCount] = useState(0)
+  const [showSummary,  setShowSummary]  = useState(false)
 
   useEffect(() => {
     const seenKey = `seen_questions_${role || 'general'}`
@@ -66,12 +67,18 @@ export default function InterviewPage() {
     }
   }, [current, questions, generated, role])
 
-  function handleClearHistory() {
-    const seenKey = `seen_questions_${role || 'general'}`
-    localStorage.removeItem(seenKey)
-    setHistoryCount(0)
+  function handleFinish() {
+    setShowSummary(true)
+  }
+
+  function handleRestartFromSummary() {
+    setShowSummary(false)
     setGenerated(false)
-    toast.success("Practice history reset for this role!")
+    setDone([])
+    setSkipped([])
+    setCurrent(0)
+    setAllQuestions([])
+    setQuestions([])
   }
 
   const buildSet = useCallback((cat, poolToUse = allQuestions) => {
@@ -256,19 +263,6 @@ Practice with a timer. Analyze yourself honestly.          </p>
             <option value="da">Data Analyst</option>
             <option value="pm">Product Manager</option>
           </select>
-          {historyCount > 0 && (
-            <button
-              className="btn btn-ghost"
-              onClick={handleClearHistory}
-              style={{
-                height: 40,
-                padding: '0 var(--space-4)',
-                fontSize: 'var(--text-sm)',
-              }}
-            >
-              Reset History ({historyCount})
-            </button>
-          )}
           <button
             className="btn btn-primary"
             onClick={handleGenerate}
@@ -276,6 +270,21 @@ Practice with a timer. Analyze yourself honestly.          </p>
           >
             {loading ? 'Shuffling…' : generated ? 'Reshuffle' : 'Start practice'}
           </button>
+          {generated && !showSummary && (
+            <button
+              className="btn btn-ghost"
+              onClick={handleFinish}
+              style={{
+                height: 40,
+                padding: '0 var(--space-4)',
+                fontSize: 'var(--text-sm)',
+                borderColor: 'var(--color-success)',
+                color: 'var(--color-success)',
+              }}
+            >
+              Finish
+            </button>
+          )}
         </div>
       </div>
 
@@ -302,6 +311,177 @@ Practice with a timer. Analyze yourself honestly.          </p>
           title="No questions in this category"
           description="Try All or a different category tab"
         />
+
+      ) : showSummary ? (
+        /* ── Interview Summary Card ── */
+        <div style={{
+          maxWidth: 480,
+          margin: '0 auto',
+        }}>
+          <div className="card" style={{
+            border: '2px solid var(--color-primary-muted)',
+            textAlign: 'center',
+            padding: 'var(--space-8)',
+          }}>
+            {/* Icon */}
+            <div style={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              background: 'var(--color-success-bg)',
+              border: '2px solid var(--color-success)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto var(--space-4)',
+              fontSize: 28,
+            }}>
+              🎯
+            </div>
+
+            <h3 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'var(--text-xl)',
+              fontWeight: 'var(--weight-bold)',
+              color: 'var(--color-text-primary)',
+              marginBottom: 'var(--space-2)',
+            }}>
+              Session Complete!
+            </h3>
+            <p style={{
+              fontSize: 'var(--text-sm)',
+              color: 'var(--color-text-secondary)',
+              marginBottom: 'var(--space-6)',
+            }}>
+              Here's a summary of your interview practice session.
+            </p>
+
+            {/* Stats grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 'var(--space-4)',
+              marginBottom: 'var(--space-6)',
+            }}>
+              {/* Answered */}
+              <div style={{
+                background: 'var(--color-success-bg)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-4)',
+                border: '1px solid rgba(34,197,94,0.2)',
+              }}>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--text-2xl)',
+                  fontWeight: 'var(--weight-bold)',
+                  color: 'var(--color-success)',
+                  marginBottom: 'var(--space-1)',
+                }}>
+                  {answered}
+                </div>
+                <div style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--weight-medium)',
+                  color: 'var(--color-success)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}>
+                  Answered
+                </div>
+              </div>
+
+              {/* Skipped */}
+              <div style={{
+                background: 'var(--color-warning-bg)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-4)',
+                border: '1px solid rgba(245,158,11,0.2)',
+              }}>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--text-2xl)',
+                  fontWeight: 'var(--weight-bold)',
+                  color: 'var(--color-warning)',
+                  marginBottom: 'var(--space-1)',
+                }}>
+                  {skippedCount}
+                </div>
+                <div style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--weight-medium)',
+                  color: 'var(--color-warning)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}>
+                  Skipped
+                </div>
+              </div>
+
+              {/* Left */}
+              <div style={{
+                background: 'var(--color-bg-surface-2)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-4)',
+                border: '1px solid var(--color-border)',
+              }}>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: 'var(--text-2xl)',
+                  fontWeight: 'var(--weight-bold)',
+                  color: 'var(--color-text-primary)',
+                  marginBottom: 'var(--space-1)',
+                }}>
+                  {left}
+                </div>
+                <div style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--weight-medium)',
+                  color: 'var(--color-text-tertiary)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}>
+                  Left
+                </div>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ marginBottom: 'var(--space-6)' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-text-tertiary)',
+                marginBottom: 'var(--space-2)',
+              }}>
+                <span>Completion</span>
+                <span>{questions.length > 0 ? Math.round((answered / questions.length) * 100) : 0}%</span>
+              </div>
+              <div className="progress-track" style={{ height: 8 }}>
+                <div
+                  className="progress-fill success"
+                  style={{ width: `${questions.length > 0 ? (answered / questions.length) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center' }}>
+              <button
+                className="btn btn-ghost"
+                onClick={handleRestartFromSummary}
+              >
+                Start New Session
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => { setShowSummary(false) }}
+              >
+                Back to Questions
+              </button>
+            </div>
+          </div>
+        </div>
 
       ) : (
         <div style={{

@@ -59,7 +59,7 @@ function scoreBg(score) {
 }
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const navigate         = useNavigate()
   const [history, setHistory] = useState([])
   const [search,  setSearch]  = useState('')
@@ -433,70 +433,91 @@ export default function DashboardPage() {
             <p className="text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
               {user?.email || 'user@email.com'}
             </p>
-            <p className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginTop: 2 }}>
-              Member since Jan 2025
-            </p>
           </div>
 
-          {/* Profile details */}
-          <div className="card">
-            <p style={{
-              fontSize:      'var(--text-xs)',
-              fontWeight:    'var(--weight-medium)',
-              color:         'var(--color-text-tertiary)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              marginBottom:  'var(--space-4)',
+          {/* Motivational Quote */}
+          <div style={{
+            background:    'linear-gradient(135deg, #6C63FF 0%, #9B8FF8 100%)',
+            borderRadius:  'var(--radius-lg)',
+            padding:       'var(--space-6)',
+            textAlign:     'center',
+            position:      'relative',
+            overflow:      'hidden',
+            boxShadow:     'var(--shadow-md)',
+          }}>
+            {/* Decorative background circles */}
+            <div style={{
+              position:     'absolute',
+              top:          -20,
+              right:        -20,
+              width:         80,
+              height:        80,
+              borderRadius: '50%',
+              background:   'rgba(255,255,255,0.08)',
+              pointerEvents:'none',
+            }} />
+            <div style={{
+              position:     'absolute',
+              bottom:       -28,
+              left:         -20,
+              width:         100,
+              height:        100,
+              borderRadius: '50%',
+              background:   'rgba(255,255,255,0.06)',
+              pointerEvents:'none',
+            }} />
+
+            {/* Open-quote glyph */}
+            <div style={{
+              fontFamily:  'var(--font-display)',
+              fontSize:     48,
+              lineHeight:   1,
+              color:        'rgba(255,255,255,0.30)',
+              marginBottom: 'var(--space-2)',
+              userSelect:   'none',
             }}>
-              Profile details
+              &#8220;
+            </div>
+
+            {/* Quote text */}
+            <p style={{
+              fontFamily:   'var(--font-display)',
+              fontSize:     'var(--text-sm)',
+              fontWeight:   'var(--weight-semibold)',
+              color:         '#FFFFFF',
+              lineHeight:   'var(--line-relaxed)',
+              letterSpacing:'0.01em',
+              marginBottom: 'var(--space-4)',
+              position:     'relative',
+              zIndex:        1,
+            }}>
+              Your resume gets you noticed.<br />
+              Your skills get you hired.
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              {[
-                { label: 'Target role',  value: bestEntry?.role || 'Not set' },
-                { label: 'Resumes',      value: `${history.length} analyzed`  },
-                { label: 'Best score',   value: bestScore                      },
-                { label: 'Avg JD match', value: `${avgJd}%`                   },
-              ].map(item => (
-                <div
-                  key={item.label}
-                  style={{
-                    display:        'flex',
-                    justifyContent: 'space-between',
-                    alignItems:     'center',
-                    fontSize:       'var(--text-xs)',
-                  }}
-                >
-                  <span className="text-secondary">{item.label}</span>
-                  <span style={{
-                    fontWeight: 'var(--weight-medium)',
-                    color:      'var(--color-text-primary)',
-                  }}>
-                    {item.value}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {/* Divider */}
+            <div style={{
+              width:        40,
+              height:       2,
+              background:   'rgba(255,255,255,0.40)',
+              borderRadius: 'var(--radius-full)',
+              margin:       '0 auto var(--space-3)',
+            }} />
+
+            {/* Attribution label */}
+            <p style={{
+              fontSize:     'var(--text-xs)',
+              color:        'rgba(255,255,255,0.65)',
+              fontWeight:   'var(--weight-medium)',
+              letterSpacing:'0.04em',
+              textTransform:'uppercase',
+              position:     'relative',
+              zIndex:        1,
+            }}>
+              Career Wisdom
+            </p>
           </div>
 
-          
-
-          {/* Actions */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-           
-            
-            <button
-              className="btn btn-ghost btn-sm"
-              style={{
-                width:       '100%',
-                color:       'var(--color-danger)',
-                borderColor: 'var(--color-danger-bg)',
-              }}
-              onClick={logout}
-            >
-              Log out
-            </button>
-          </div>
         </div>
 
       </div>
