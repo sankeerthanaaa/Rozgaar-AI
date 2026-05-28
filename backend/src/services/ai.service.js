@@ -8,7 +8,9 @@ const getAIResponse = async (prompt, systemInstruction = "You are an AI assistan
         { role: "system", content: systemInstruction },
         { role: "user", content: prompt },
       ],
-      temperature: 0.7,
+      temperature: 0,
+      top_p: 0,
+      response_format: { type: "json_object" },
     });
     return completion.choices[0].message.content;
   }

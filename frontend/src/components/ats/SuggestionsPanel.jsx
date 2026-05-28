@@ -5,66 +5,89 @@ import resumeService from '../../services/resumeService'
 
 const FILTERS = ['All', 'Improve', 'Add', 'Remove']
 
-export default function SuggestionsPanel({ suggestions = [], resumeId, fileName }) {
-  const [filter,   setFilter]   = useState('All')
-  const [applied,  setApplied]  = useState([])
-  const [downloading, setDownloading] = useState(false)
+export default function SuggestionsPanel({ suggestions = [], resumeId, onOptimizedOutputGenerated }) {
+  const [filter, setFilter] = useState('All')
+  const [selectedIds, setSelectedIds] = useState([])
+  const [loading, setLoading] = useState(false)
 
   const visible = filter === 'All'
     ? suggestions
     : suggestions.filter(s => s.type === filter)
 
-  function handleApply(suggestion) {
-    if (!applied.includes(suggestion.id)) {
-      setApplied(prev => [...prev, suggestion.id])
-    }
-    toast.success(`Suggestion applied — ${suggestion.section}`)
+  const handleToggleSelect = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
   }
 
-  async function handleApplyAllAndDownload() {
-    // 1. Mark all as applied
-    const allIds = suggestions.map(s => s.id)
-    setApplied(allIds)
+  const handleApplySelected = async () => {
+    if (!resumeId) {
+      toast.error('Resume session expired. Please analyze again.')
+      return
+    }
+    if (selectedIds.length === 0) {
+      toast.error('Please select at least one suggestion using the checkboxes.')
+      return
+    }
+
+    setLoading(true)
+    const toastId = toast.loading('Applying selected suggestions...')
     
+    try {
+      // Call API with selected suggestion IDs and format "json"
+      const res = await resumeService.downloadModified(resumeId, selectedIds, "json")
+      
+      if (res && res.plainText) {
+        toast.success('Suggestions applied! Check the optimized output below.', { id: toastId })
+        if (onOptimizedOutputGenerated) {
+          onOptimizedOutputGenerated({
+            plainText: res.plainText,
+            markdown: res.markdown
+          })
+        }
+      } else {
+        toast.error('Failed to apply suggestions.', { id: toastId })
+      }
+    } catch (error) {
+      console.error('Apply suggestions error:', error)
+      toast.error('Error applying selected suggestions.', { id: toastId })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleApplyAll = async () => {
     if (!resumeId) {
       toast.error('Resume session expired. Please analyze again.')
       return
     }
 
-    setDownloading(true)
-    const toastId = toast.loading('Applying suggestions and generating download...')
+    const allIds = suggestions.map(s => s.id)
+    setSelectedIds(allIds)
+
+    setLoading(true)
+    const toastId = toast.loading('Applying all suggestions...')
     
     try {
-      // Determine output format from current fileName extension
-      let format = 'pdf'
-      if (fileName) {
-        const ext = fileName.split('.').pop().toLowerCase()
-        if (['txt', 'docx'].includes(ext)) {
-          format = ext
+      // Call API with all suggestion IDs and format "json"
+      const res = await resumeService.downloadModified(resumeId, allIds, "json")
+      
+      if (res && res.plainText) {
+        toast.success('All suggestions applied successfully!', { id: toastId })
+        if (onOptimizedOutputGenerated) {
+          onOptimizedOutputGenerated({
+            plainText: res.plainText,
+            markdown: res.markdown
+          })
         }
+      } else {
+        toast.error('Failed to apply all suggestions.', { id: toastId })
       }
-
-      // Call API
-      const blob = await resumeService.downloadModified(resumeId, allIds, format)
-      
-      // Trigger download
-      const url = window.URL.createObjectURL(new Blob([blob]))
-      const link = document.createElement('a')
-      link.href = url
-      
-      const baseName = fileName ? fileName.replace(/\.[^/.]+$/, "") : "resume"
-      link.setAttribute('download', `modified_${baseName}.${format}`)
-      document.body.appendChild(link)
-      link.click()
-      link.parentNode.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      
-      toast.success('Download completed successfully!', { id: toastId })
     } catch (error) {
-      console.error('Download error:', error)
-      toast.error('Failed to download modified resume.', { id: toastId })
+      console.error('Apply all error:', error)
+      toast.error('Error applying all suggestions.', { id: toastId })
     } finally {
-      setDownloading(false)
+      setLoading(false)
     }
   }
 
@@ -120,28 +143,37 @@ export default function SuggestionsPanel({ suggestions = [], resumeId, fileName 
         </div>
       </div>
 
-      {/* Cards */}
-      {visible.map(s => (
-        <div key={s.id} style={{
-          opacity:    applied.includes(s.id) ? 0.45 : 1,
-          transition: 'opacity var(--transition-base)',
-        }}>
+      {/* Cards list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxH: '600px', overflowY: 'auto' }}>
+        {visible.map(s => (
           <SuggestionCard
+            key={s.id}
             suggestion={s}
-            onApply={handleApply}
+            isSelected={selectedIds.includes(s.id)}
+            onToggleSelect={handleToggleSelect}
           />
-        </div>
-      ))}
+        ))}
+      </div>
 
-      {/* Apply all & download */}
-      <button
-        className="btn btn-primary"
-        style={{ width: '100%' }}
-        onClick={handleApplyAllAndDownload}
-        disabled={downloading}
-      >
-        {downloading ? 'Downloading...' : 'Apply all & download'}
-      </button>
+      {/* Action buttons */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+        <button
+          className="btn btn-secondary"
+          onClick={handleApplySelected}
+          disabled={loading}
+          style={{ fontSize: 'var(--text-xs)', height: '40px' }}
+        >
+          {loading ? 'Applying...' : 'Apply Selected Suggestions'}
+        </button>
+        <button
+          className="btn btn-primary"
+          onClick={handleApplyAll}
+          disabled={loading}
+          style={{ fontSize: 'var(--text-xs)', height: '40px' }}
+        >
+          {loading ? 'Applying All...' : 'Apply All Suggestions'}
+        </button>
+      </div>
     </div>
   )
 }
