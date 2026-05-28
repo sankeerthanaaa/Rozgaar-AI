@@ -41,7 +41,7 @@ export default function ScoreExplainer() {
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--space-5)' }}>
+        <div className="score-explainer-grid">
           {BLOCKS.map(b => (
             <div key={b.label} style={{
               background: b.bg, borderRadius: 'var(--radius-lg)',

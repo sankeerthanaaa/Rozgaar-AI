@@ -1,8 +1,21 @@
 const resumeService = require("../services/storage.service");
 const fileUploadService = require("../services/fileUpload.service");
-const parserService = require("../services/parser.service");
+const { parseResumeFromBuffer } = require("../services/parser.service");
 const { analyzeATS } = require("../services/ats.service");
+const { freezeResumeText } = require("../services/atsScoring.engine");
 const Resume = require("../models/Resume.model");
+
+function parseKeywordsInput(keywords) {
+  if (!keywords) return [];
+  try {
+    return typeof keywords === "string" ? JSON.parse(keywords) : keywords;
+  } catch (e) {
+    return String(keywords)
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean);
+  }
+}
 
 const uploadResume = async (req, res) => {
   try {
@@ -14,27 +27,20 @@ const uploadResume = async (req, res) => {
     }
 
     const { jobDescription, keywords } = req.body;
-    let keywordArray = [];
-    if (keywords) {
-      try {
-        // Handle keywords whether they come as a JSON string or an array
-        keywordArray = typeof keywords === "string" ? JSON.parse(keywords) : keywords;
-      } catch (e) {
-        keywordArray = keywords.split(',').map(k => k.trim());
-      }
-    }
+    const keywordArray = parseKeywordsInput(keywords);
 
     const fileData = await resumeService.saveFile(req.file);
-    const parsedData = await parserService.parseResume(req.file.path);
+    const parsedData = await parseResumeFromBuffer(req.file.buffer, req.file.originalname);
+    const frozenText = freezeResumeText(parsedData.text || "");
 
     let atsResultData = null;
     let atsScoreVal = 0;
     let suggestionsArr = [];
 
-    // Run ATS Analysis automatically on upload
-    if (parsedData && parsedData.text) {
+    // Run ATS analysis using frozen extracted text (parsed once at upload)
+    if (frozenText) {
       try {
-        atsResultData = await analyzeATS(parsedData.text, jobDescription, keywordArray);
+        atsResultData = await analyzeATS(frozenText, jobDescription, keywordArray);
         if (typeof atsResultData === 'string') {
           atsResultData = JSON.parse(atsResultData);
         }
@@ -45,15 +51,16 @@ const uploadResume = async (req, res) => {
       }
     }
 
-    const structuredResume = extractResumeDataFromText(parsedData.text);
+    const structuredResume = extractResumeDataFromText(frozenText);
 
     const resume = await Resume.create({
       userId: req.user.id,
       fileName: fileData.fileName,
       fileUrl: fileData.fileUrl,
+      publicId: fileData.publicId,
       fileSize: fileData.fileSize,
       mimeType: fileData.mimeType,
-      parsedText: parsedData.text,
+      parsedText: frozenText,
       parsedData: structuredResume,
       atsScore: atsScoreVal,
       atsResult: atsResultData,
@@ -67,6 +74,66 @@ const uploadResume = async (req, res) => {
     });
   } catch (error) {
     console.error("Upload Resume Error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Re-run ATS using stored parsedText — never re-parses the PDF.
+ */
+const analyzeResume = async (req, res) => {
+  try {
+    const resumeId = req.params.id || req.body.resumeId;
+    if (!resumeId) {
+      return res.status(400).json({
+        success: false,
+        message: "Resume ID is required",
+      });
+    }
+
+    const resume = await Resume.findOne({
+      _id: resumeId,
+      userId: req.user.id,
+    });
+
+    if (!resume) {
+      return res.status(404).json({
+        success: false,
+        message: "Resume not found",
+      });
+    }
+
+    if (!resume.parsedText || !resume.parsedText.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Resume has no stored text. Please upload the file again.",
+      });
+    }
+
+    const { jobDescription, keywords } = req.body;
+    const keywordArray = parseKeywordsInput(keywords);
+
+    const atsResultData = await analyzeATS(
+      resume.parsedText,
+      jobDescription || "",
+      keywordArray
+    );
+
+    resume.atsScore = atsResultData.atsScore || 0;
+    resume.atsResult = atsResultData;
+    resume.suggestions = atsResultData.suggestions || [];
+    resume.status = "analyzed";
+    await resume.save();
+
+    res.status(200).json({
+      success: true,
+      data: resume,
+    });
+  } catch (error) {
+    console.error("Analyze Resume Error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -135,14 +202,12 @@ const deleteResume = async (req, res) => {
     }
 
     try {
-      const fileName = resume.fileUrl.split("/uploads/")[1];
-      if (fileName) {
-        const path = require("path");
-        const filePath = path.join(__dirname, "../../uploads", fileName);
-        fileUploadService.deleteFile(filePath);
+      const publicId = resume.publicId;
+      if (publicId) {
+        await fileUploadService.deleteFromCloudinary(publicId);
       }
     } catch (err) {
-      console.error("Failed to delete physical file:", err.message);
+      console.error("Failed to delete file from Cloudinary:", err.message);
     }
 
     await Resume.findByIdAndDelete(req.params.id);
@@ -187,7 +252,7 @@ function extractResumeDataFromText(text) {
     }
   }
   if (!resumeData.name) {
-    resumeData.name = "Aarav Sharma"; // Default fallback
+    resumeData.name = ""; // Default fallback
   }
 
   // Extract Email
@@ -356,7 +421,7 @@ function extractResumeDataFromText(text) {
 // Helper to apply suggestions to structured resume data
 function applySuggestionsToStructuredData(originalData, suggestions, appliedIds) {
   const data = JSON.parse(JSON.stringify(originalData || {}));
-  if (!data.name) data.name = "Aarav Sharma";
+  if (!data.name) data.name = "";
   if (!data.email) data.email = "";
   if (!data.skills) data.skills = [];
   if (!data.experience) data.experience = [];
@@ -370,24 +435,27 @@ function applySuggestionsToStructuredData(originalData, suggestions, appliedIds)
     const section = (suggestion.section || "").toLowerCase().trim();
     const type = (suggestion.type || "").toLowerCase().trim();
     
+    const originalText = suggestion.original || suggestion.before || "";
+    const improvedText = suggestion.improved || suggestion.after || "";
+    
     if (section === "summary" || section === "objective") {
-      if (type === "improve" && suggestion.before) {
-        if (data.summary && data.summary.includes(suggestion.before)) {
-          data.summary = data.summary.replace(suggestion.before, suggestion.after);
+      if (type === "improve" && originalText) {
+        if (data.summary && data.summary.includes(originalText)) {
+          data.summary = data.summary.replace(originalText, improvedText);
         } else {
-          data.summary = suggestion.after;
+          data.summary = improvedText;
         }
       } else if (type === "add") {
-        data.summary = data.summary ? `${data.summary}\n${suggestion.after}` : suggestion.after;
-      } else if (type === "remove" && suggestion.before) {
+        data.summary = data.summary ? `${data.summary}\n${improvedText}` : improvedText;
+      } else if (type === "remove" && originalText) {
         if (data.summary) {
-          data.summary = data.summary.replace(suggestion.before, "");
+          data.summary = data.summary.replace(originalText, "");
         }
       }
     } else if (section === "skills") {
       if (type === "add") {
-        const match = suggestion.after.match(/keywords:\s*(.+)$/i) || suggestion.after.match(/keywords\s*(.+)$/i);
-        const skillsString = match ? match[1] : suggestion.after;
+        const match = improvedText.match(/keywords:\s*(.+)$/i) || improvedText.match(/keywords\s*(.+)$/i);
+        const skillsString = match ? match[1] : improvedText;
         const newSkills = skillsString
           .split(/[,|•]/)
           .map(s => s.replace(/\.$/, "").trim())
@@ -396,31 +464,31 @@ function applySuggestionsToStructuredData(originalData, suggestions, appliedIds)
         if (newSkills.length > 0) {
           data.skills = [...new Set([...data.skills, ...newSkills])];
         } else {
-          data.skills.push(suggestion.after);
+          data.skills.push(improvedText);
         }
       } else if (type === "improve" || type === "remove") {
-        if (suggestion.before) {
-          data.skills = data.skills.filter(s => s !== suggestion.before);
+        if (originalText) {
+          data.skills = data.skills.filter(s => s !== originalText);
         }
-        if (type === "improve" && suggestion.after) {
-          data.skills.push(suggestion.after);
+        if (type === "improve" && improvedText) {
+          data.skills.push(improvedText);
         }
       }
     } else if (section === "experience") {
       data.experience.forEach(exp => {
-        if (type === "improve" && suggestion.before) {
-          if (exp.description && exp.description.includes(suggestion.before)) {
-            exp.description = exp.description.replace(suggestion.before, suggestion.after);
+        if (type === "improve" && originalText) {
+          if (exp.description && exp.description.includes(originalText)) {
+            exp.description = exp.description.replace(originalText, improvedText);
           } else {
-            const escaped = suggestion.before.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const escaped = originalText.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
             const regex = new RegExp(escaped, 'i');
             if (exp.description && regex.test(exp.description)) {
-              exp.description = exp.description.replace(regex, suggestion.after);
+              exp.description = exp.description.replace(regex, improvedText);
             }
           }
-        } else if (type === "remove" && suggestion.before) {
-          if (exp.description && exp.description.includes(suggestion.before)) {
-            exp.description = exp.description.replace(suggestion.before, "");
+        } else if (type === "remove" && originalText) {
+          if (exp.description && exp.description.includes(originalText)) {
+            exp.description = exp.description.replace(originalText, "");
           }
         }
       });
@@ -432,21 +500,21 @@ function applySuggestionsToStructuredData(originalData, suggestions, appliedIds)
             company: "Organization",
             startDate: "2024",
             endDate: "Present",
-            description: suggestion.after
+            description: improvedText
           });
         } else {
-          data.experience[0].description += "\n" + suggestion.after;
+          data.experience[0].description += "\n" + improvedText;
         }
       }
     } else if (section === "projects") {
       data.projects.forEach(proj => {
-        if (type === "improve" && suggestion.before) {
-          if (proj.description && proj.description.includes(suggestion.before)) {
-            proj.description = proj.description.replace(suggestion.before, suggestion.after);
+        if (type === "improve" && originalText) {
+          if (proj.description && proj.description.includes(originalText)) {
+            proj.description = proj.description.replace(originalText, improvedText);
           }
-        } else if (type === "remove" && suggestion.before) {
-          if (proj.description && proj.description.includes(suggestion.before)) {
-            proj.description = proj.description.replace(suggestion.before, "");
+        } else if (type === "remove" && originalText) {
+          if (proj.description && proj.description.includes(originalText)) {
+            proj.description = proj.description.replace(originalText, "");
           }
         }
       });
@@ -455,32 +523,32 @@ function applySuggestionsToStructuredData(originalData, suggestions, appliedIds)
         if (data.projects.length === 0) {
           data.projects.push({
             name: "Project",
-            description: suggestion.after
+            description: improvedText
           });
         } else {
-          data.projects[0].description += "\n" + suggestion.after;
+          data.projects[0].description += "\n" + improvedText;
         }
       }
     } else if (section === "education") {
       data.education.forEach(edu => {
-        if (type === "improve" && suggestion.before) {
-          if (edu.degree && edu.degree.includes(suggestion.before)) {
-            edu.degree = edu.degree.replace(suggestion.before, suggestion.after);
+        if (type === "improve" && originalText) {
+          if (edu.degree && edu.degree.includes(originalText)) {
+            edu.degree = edu.degree.replace(originalText, improvedText);
           }
         }
       });
     } else if (section === "certifications" || section === "achievements") {
       if (type === "add") {
-        data.certifications.push(suggestion.after);
-      } else if (type === "improve" && suggestion.before) {
-        const idx = data.certifications.indexOf(suggestion.before);
+        data.certifications.push(improvedText);
+      } else if (type === "improve" && originalText) {
+        const idx = data.certifications.indexOf(originalText);
         if (idx !== -1) {
-          data.certifications[idx] = suggestion.after;
+          data.certifications[idx] = improvedText;
         } else {
-          data.certifications.push(suggestion.after);
+          data.certifications.push(improvedText);
         }
-      } else if (type === "remove" && suggestion.before) {
-        data.certifications = data.certifications.filter(c => c !== suggestion.before);
+      } else if (type === "remove" && originalText) {
+        data.certifications = data.certifications.filter(c => c !== originalText);
       }
     }
   });
@@ -764,6 +832,79 @@ const generateCleanTxt = (resumeData) => {
   return output;
 };
 
+// Generate clean Markdown layout
+const generateCleanMarkdown = (resumeData) => {
+  let output = `# ${resumeData.name || "Resume Profile"}\n\n`;
+  const contact = [];
+  if (resumeData.email) contact.push(`**Email:** ${resumeData.email}`);
+  if (resumeData.phone) contact.push(`**Phone:** ${resumeData.phone}`);
+  if (resumeData.location) contact.push(`**Location:** ${resumeData.location}`);
+  
+  if (contact.length > 0) {
+    output += contact.join("  |  ") + "\n\n";
+  }
+  
+  if (resumeData.summary) {
+    output += `## Professional Summary\n${resumeData.summary}\n\n`;
+  }
+  
+  if (resumeData.skills && resumeData.skills.length > 0) {
+    output += `## Skills & Expertise\n`;
+    let skillsList = resumeData.skills;
+    const categorized = skillsList.some(s => s.includes(":"));
+    if (categorized) {
+      skillsList.forEach(s => {
+        output += `- ${s}\n`;
+      });
+    } else {
+      output += `- ${skillsList.join(", ")}\n`;
+    }
+    output += `\n`;
+  }
+  
+  if (resumeData.experience && resumeData.experience.length > 0) {
+    output += `## Professional Experience\n`;
+    resumeData.experience.forEach(exp => {
+      output += `### ${exp.title} at ${exp.company} (${exp.startDate} - ${exp.endDate})\n`;
+      const bullets = (exp.description || "").split(/\r?\n/).map(b => b.trim()).filter(b => b.length > 0);
+      bullets.forEach(b => {
+        output += `- ${b.replace(/^[\-•\*\s]+/, "")}\n`;
+      });
+      output += `\n`;
+    });
+  }
+  
+  if (resumeData.projects && resumeData.projects.length > 0) {
+    output += `## Key Projects\n`;
+    resumeData.projects.forEach(proj => {
+      output += `### ${proj.name}\n`;
+      const bullets = (proj.description || "").split(/\r?\n/).map(b => b.trim()).filter(b => b.length > 0);
+      bullets.forEach(b => {
+        output += `- ${b.replace(/^[\-•\*\s]+/, "")}\n`;
+      });
+      output += `\n`;
+    });
+  }
+  
+  if (resumeData.education && resumeData.education.length > 0) {
+    output += `## Education\n`;
+    resumeData.education.forEach(edu => {
+      const degreeText = edu.degree ? `${edu.degree}${edu.field ? ' in ' + edu.field : ''}` : "Studies";
+      output += `* **${degreeText}** at ${edu.school} (${edu.startDate} - ${edu.endDate})\n`;
+    });
+    output += `\n`;
+  }
+
+  if (resumeData.certifications && resumeData.certifications.length > 0) {
+    output += `## Certifications & Achievements\n`;
+    resumeData.certifications.forEach(cert => {
+      output += `- ${cert.replace(/^[\-•\*\s]+/, "")}\n`;
+    });
+  }
+  
+  return output;
+};
+
 const downloadModifiedResume = async (req, res) => {
   try {
     const { resumeId, appliedIds, format } = req.body;
@@ -784,25 +925,30 @@ const downloadModifiedResume = async (req, res) => {
     const finalResumeData = applySuggestionsToStructuredData(resumeData, suggestions, appliedIds || []);
     const cleanFilename = `modified_${(resume.fileName || "resume").replace(/\.[^/.]+$/, "")}`;
     
-    if (format === "txt" || format === "docx") {
-      const plainTextContent = generateCleanTxt(finalResumeData);
-      
-      if (format === "txt") {
-        res.setHeader("Content-Type", "text/plain");
-        res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}.txt"`);
-      } else {
-        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-        res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}.docx"`);
-      }
-      return res.send(plainTextContent);
-    } else {
-      // PDF format rendering
-      generateProfessionalPDF(res, finalResumeData, cleanFilename);
+    if (format === "json") {
+      return res.status(200).json({
+        success: true,
+        plainText: generateCleanTxt(finalResumeData),
+        markdown: generateCleanMarkdown(finalResumeData)
+      });
     }
+    
+    // Default or fallback download as TXT
+    const plainTextContent = generateCleanTxt(finalResumeData);
+    res.setHeader("Content-Type", "text/plain");
+    res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}.txt"`);
+    return res.send(plainTextContent);
   } catch (error) {
-    console.error("Download Modified Error:", error);
+    console.error("Download/Apply Modified Error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-module.exports = { uploadResume, getResumes, getResumeById, deleteResume, downloadModifiedResume };
+module.exports = {
+  uploadResume,
+  analyzeResume,
+  getResumes,
+  getResumeById,
+  deleteResume,
+  downloadModifiedResume,
+};

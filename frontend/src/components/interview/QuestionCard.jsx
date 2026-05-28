@@ -7,7 +7,7 @@ const CATEGORY_STYLE = {
   'Gap-based': { bg: 'var(--color-warning-bg)', color: 'var(--color-warning)' },
 }
 
-export default function QuestionCard({ question, index, total, onNext, onPrev, onSkip }) {
+export default function QuestionCard({ question, index, total, onNext, onPrev, onSkip, onFinish }) {
   if (!question) return null
   const style = CATEGORY_STYLE[question.category] || CATEGORY_STYLE.Technical
 

@@ -214,14 +214,7 @@ export default function InterviewPage() {
     }}>
 
       {/* Header */}
-      <div style={{
-        display:        'flex',
-        alignItems:     'flex-start',
-        justifyContent: 'space-between',
-        flexWrap:       'wrap',
-        gap:            'var(--space-4)',
-        marginBottom:   'var(--space-6)',
-      }}>
+      <div className="interview-header">
         <div>
           <h2 style={{
             fontFamily:   'var(--font-display)',
@@ -232,10 +225,10 @@ export default function InterviewPage() {
             Interview prep
           </h2>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
-Practice with a timer. Analyze yourself honestly.          </p>
+            Practice with a timer. Analyze yourself honestly.          </p>
         </div>
 
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+        <div className="interview-header-controls">
           <select
             value={role}
             onChange={e => setRole(e.target.value)}
@@ -289,13 +282,13 @@ Practice with a timer. Analyze yourself honestly.          </p>
       </div>
 
       {/* Category tabs */}
-      <div style={{ marginBottom: 'var(--space-6)' }}>
+      <div className="category-tabs-scroll">
         <CategoryTabs active={category} onChange={handleCategoryChange} />
       </div>
 
       {/* States */}
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-6)' }}>
+        <div className="interview-skeleton-grid">
           <Skeleton height="500px" radius="var(--radius-lg)" />
           <Skeleton height="500px" radius="var(--radius-lg)" />
         </div>
@@ -484,12 +477,7 @@ Practice with a timer. Analyze yourself honestly.          </p>
         </div>
 
       ) : (
-        <div style={{
-          display:             'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap:                 'var(--space-6)',
-          alignItems:          'start',
-        }}>
+        <div className="interview-content-grid">
 
           {/* LEFT — active question + timer */}
           <QuestionCard

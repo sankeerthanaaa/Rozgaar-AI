@@ -118,12 +118,7 @@ export default function DashboardPage() {
 
   return (
     <div className="container" style={{ paddingBlock: 'var(--space-8)' }}>
-      <div style={{
-        display:             'grid',
-        gridTemplateColumns: '1fr 280px',
-        gap:                 'var(--space-8)',
-        alignItems:          'start',
-      }}>
+      <div className="dashboard-grid">
 
         {/* ══ LEFT COLUMN ══ */}
         <div>
@@ -139,12 +134,7 @@ export default function DashboardPage() {
           </div>
 
           {/* ── Stat cards ── */}
-          <div style={{
-            display:             'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap:                 'var(--space-4)',
-            marginBottom:        'var(--space-8)',
-          }}>
+          <div className="stat-grid">
 
             {/* Best ATS score */}
             <div className="stat-card">
@@ -190,19 +180,22 @@ export default function DashboardPage() {
 
           {/* ── History table ── */}
           <div style={{ marginBottom: 'var(--space-4)' }}>
-            <div style={{
-              display:        'flex',
-              alignItems:     'center',
-              justifyContent: 'space-between',
-              marginBottom:   'var(--space-4)',
-              flexWrap:       'wrap',
-              gap:            'var(--space-3)',
-            }}>
+            <div
+              className="dashboard-search-row"
+              style={{
+                display:        'flex',
+                alignItems:     'center',
+                justifyContent: 'space-between',
+                marginBottom:   'var(--space-4)',
+                flexWrap:       'wrap',
+                gap:            'var(--space-3)',
+              }}
+            >
               <h3 style={{ fontSize: 'var(--text-md)' }}>
                 Resume history
               </h3>
               <input
-                className="input"
+                className="input dashboard-search-input"
                 style={{ width: 220 }}
                 placeholder="Search by file or role..."
                 value={search}
@@ -218,13 +211,7 @@ export default function DashboardPage() {
             }}>
 
               {/* Table header */}
-              <div style={{
-                display:             'grid',
-                gridTemplateColumns: '2fr 1.2fr 80px 80px 100px 80px',
-                padding:             'var(--space-3) var(--space-5)',
-                background:          'var(--color-bg-surface-2)',
-                borderBottom:        '1px solid var(--color-border-surface)',
-              }}>
+              <div className="dashboard-table-header">
                 {['File', 'Role', 'ATS', 'JD match', 'Date', 'Actions'].map(h => (
                   <span key={h} style={{
                     fontSize:      'var(--text-xs)',
@@ -261,15 +248,11 @@ export default function DashboardPage() {
                 filtered.map((r, i) => (
                   <div
                     key={r.id}
+                    className="dashboard-table-row"
                     style={{
-                      display:             'grid',
-                      gridTemplateColumns: '2fr 1.2fr 80px 80px 100px 80px',
-                      padding:             'var(--space-4) var(--space-5)',
-                      borderBottom:        i < filtered.length - 1
+                      borderBottom: i < filtered.length - 1
                         ? '1px solid var(--color-border-surface)'
                         : 'none',
-                      alignItems:          'center',
-                      transition:          'background var(--transition-fast)',
                     }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-surface-2)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
