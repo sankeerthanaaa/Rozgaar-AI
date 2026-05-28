@@ -15,6 +15,14 @@ const resumeService = {
     return res.data;
   },
 
+  async analyzeResume(resumeId, jobDescription = "", keywords = []) {
+    const res = await api.post(`/resume/analyze/${resumeId}`, {
+      jobDescription,
+      keywords,
+    });
+    return res.data;
+  },
+
   async importLinkedIn(profileUrl, jobDescription = "", role = "") {
     const res = await api.post("/linkedin/import", {
       profileUrl,
@@ -39,11 +47,12 @@ const resumeService = {
     return res.data;
   },
 
-  async downloadModified(resumeId, appliedIds = [], format = "pdf") {
+  async downloadModified(resumeId, appliedIds = [], format = "txt") {
+    const config = format === "json" ? {} : { responseType: "blob" };
     const res = await api.post(
       "/resume/download-modified",
       { resumeId, appliedIds, format },
-      { responseType: "blob" }
+      config
     );
     return res.data;
   },

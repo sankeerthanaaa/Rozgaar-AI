@@ -2,6 +2,7 @@ const pdfParse = require("pdf-parse");
 const fs = require("fs");
 const path = require("path");
 const mammoth = require("mammoth");
+const { freezeResumeText } = require("./atsScoring.engine");
 
 const parseResume = async (filePath) => {
   try {
@@ -25,11 +26,7 @@ const parseResume = async (filePath) => {
       throw new Error(`Unsupported file type: ${ext}`);
     }
 
-    // Preserve newlines, compress multiple spaces, remove extreme line breaks
-    const cleanText = text
-      .replace(/[^\S\r\n]+/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+    const cleanText = freezeResumeText(text);
 
     return {
       text: cleanText,
@@ -63,10 +60,7 @@ const parseResumeFromBuffer = async (buffer, originalName = "") => {
       throw new Error(`Unsupported file type: ${ext}`);
     }
 
-    const cleanText = text
-      .replace(/[^\S\r\n]+/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+    const cleanText = freezeResumeText(text);
 
     return {
       text: cleanText,

@@ -1,5 +1,6 @@
 const linkedinService = require("../services/linkedin.service");
 const { analyzeATS } = require("../services/ats.service");
+const { freezeResumeText } = require("../services/atsScoring.engine");
 const Resume = require("../models/Resume.model");
 
 const linkedinCallback = async (req, res) => {
@@ -56,14 +57,15 @@ const importLinkedinProfile = async (req, res) => {
       `;
     }
 
-    // Run ATS analysis
+    const frozenText = freezeResumeText(resumeText);
+
     const keywords = role ? [role] : [];
     let atsResultData = null;
     let atsScoreVal = 0;
     let suggestionsArr = [];
 
     try {
-      atsResultData = await analyzeATS(resumeText, jobDescription, keywords);
+      atsResultData = await analyzeATS(frozenText, jobDescription, keywords);
       atsScoreVal = atsResultData.atsScore || 0;
       suggestionsArr = atsResultData.suggestions || [];
     } catch (atsError) {
@@ -77,7 +79,7 @@ const importLinkedinProfile = async (req, res) => {
       fileUrl: profileUrl || "https://linkedin.com",
       fileSize: 0,
       mimeType: "application/linkedin",
-      parsedText: resumeText,
+      parsedText: frozenText,
       parsedData: {
         name: profileData.name,
         email: profileData.email,
