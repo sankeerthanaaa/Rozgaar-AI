@@ -17,6 +17,33 @@ function parseKeywordsInput(keywords) {
   }
 }
 
+function buildAnalysisResponse(resume, atsResult) {
+  const resumeObj = resume?.toObject ? resume.toObject() : { ...resume };
+  const analysis = atsResult || resumeObj.atsResult || {};
+  const suggestions = Array.isArray(analysis.suggestions) && analysis.suggestions.length > 0
+    ? analysis.suggestions
+    : Array.isArray(resumeObj.suggestions)
+      ? resumeObj.suggestions
+      : [];
+
+  resumeObj.suggestions = suggestions;
+  resumeObj.atsResult = {
+    ...analysis,
+    suggestions,
+    missingKeywords: analysis.missingKeywords || [],
+    roleAlignmentTips: analysis.roleAlignmentTips || [],
+    suggestionSummary: analysis.suggestionSummary || "",
+    suggestionSource: analysis.suggestionSource || "",
+  };
+
+  return {
+    success: true,
+    data: resumeObj,
+    analysis: resumeObj.atsResult,
+    suggestions,
+  };
+}
+
 const uploadResume = async (req, res) => {
   try {
     if (!req.file) {
@@ -68,10 +95,7 @@ const uploadResume = async (req, res) => {
       status: atsResultData ? "analyzed" : "parsed",
     });
 
-    res.status(201).json({
-      success: true,
-      data: resume,
-    });
+    res.status(201).json(buildAnalysisResponse(resume, atsResultData));
   } catch (error) {
     console.error("Upload Resume Error:", error);
     res.status(500).json({
@@ -86,16 +110,8 @@ const uploadResume = async (req, res) => {
  */
 const analyzeResume = async (req, res) => {
   try {
-    const resumeId = req.params.id || req.body.resumeId;
-    if (!resumeId) {
-      return res.status(400).json({
-        success: false,
-        message: "Resume ID is required",
-      });
-    }
-
     const resume = await Resume.findOne({
-      _id: resumeId,
+      _id: req.params.id,
       userId: req.user.id,
     });
 
@@ -116,8 +132,9 @@ const analyzeResume = async (req, res) => {
     const { jobDescription, keywords } = req.body;
     const keywordArray = parseKeywordsInput(keywords);
 
+    const resumeText = resume.parsedText;
     const atsResultData = await analyzeATS(
-      resume.parsedText,
+      resumeText,
       jobDescription || "",
       keywordArray
     );
@@ -128,10 +145,7 @@ const analyzeResume = async (req, res) => {
     resume.status = "analyzed";
     await resume.save();
 
-    res.status(200).json({
-      success: true,
-      data: resume,
-    });
+    res.status(200).json(buildAnalysisResponse(resume, atsResultData));
   } catch (error) {
     console.error("Analyze Resume Error:", error);
     res.status(500).json({
@@ -905,6 +919,32 @@ const generateCleanMarkdown = (resumeData) => {
   return output;
 };
 
+function applySuggestionsToPlainText(parsedText, suggestions, appliedIds) {
+  let text = parsedText || "";
+  const ids = Array.isArray(appliedIds) ? appliedIds : [];
+  const toApply = suggestions.filter((s) => {
+    if (!ids.length) return true;
+    return ids.includes(s.id);
+  });
+
+  for (const s of toApply) {
+    const before = String(s.original || s.before || "").trim();
+    const after = String(s.improved || s.after || "").trim();
+    if (!before || !after) continue;
+    if (text.includes(before)) {
+      text = text.replace(before, after);
+      continue;
+    }
+    const escaped = before.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    const regex = new RegExp(escaped, "i");
+    if (regex.test(text)) {
+      text = text.replace(regex, after);
+    }
+  }
+
+  return text;
+}
+
 const downloadModifiedResume = async (req, res) => {
   try {
     const { resumeId, appliedIds, format } = req.body;
@@ -912,28 +952,48 @@ const downloadModifiedResume = async (req, res) => {
     if (!resume) {
       return res.status(404).json({ success: false, message: "Resume not found" });
     }
-    
-    // Fallback dynamically if structured data is not yet set in database
+
+    const suggestions =
+      resume.suggestions ||
+      resume.atsResult?.suggestions ||
+      [];
+    const cleanFilename = `modified_${(resume.fileName || "resume").replace(/\.[^/.]+$/, "")}`;
+
+    if (resume.parsedText && suggestions.length > 0) {
+      const plainTextContent = applySuggestionsToPlainText(
+        resume.parsedText,
+        suggestions,
+        appliedIds || []
+      );
+
+      if (format === "json") {
+        return res.status(200).json({
+          success: true,
+          plainText: plainTextContent,
+          markdown: plainTextContent,
+        });
+      }
+
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}.txt"`);
+      return res.send(plainTextContent);
+    }
+
     let resumeData = resume.parsedData;
     if (!resumeData || !resumeData.name || (!resumeData.experience?.length && !resumeData.skills?.length && !resumeData.education?.length)) {
       resumeData = extractResumeDataFromText(resume.parsedText || "");
     }
-    
-    const suggestions = resume.suggestions || [];
-    
-    // Apply suggestions to structured data
+
     const finalResumeData = applySuggestionsToStructuredData(resumeData, suggestions, appliedIds || []);
-    const cleanFilename = `modified_${(resume.fileName || "resume").replace(/\.[^/.]+$/, "")}`;
-    
+
     if (format === "json") {
       return res.status(200).json({
         success: true,
         plainText: generateCleanTxt(finalResumeData),
-        markdown: generateCleanMarkdown(finalResumeData)
+        markdown: generateCleanMarkdown(finalResumeData),
       });
     }
-    
-    // Default or fallback download as TXT
+
     const plainTextContent = generateCleanTxt(finalResumeData);
     res.setHeader("Content-Type", "text/plain");
     res.setHeader("Content-Disposition", `attachment; filename="${cleanFilename}.txt"`);

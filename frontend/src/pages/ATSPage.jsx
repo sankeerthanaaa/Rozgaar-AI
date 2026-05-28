@@ -7,6 +7,7 @@ import SourceToggle         from '../components/ats/SourceToggle'
 import ScorePanel           from '../components/ats/ScorePanel'
 import SuggestionsPanel     from '../components/ats/SuggestionsPanel'
 import resumeService        from '../services/resumeService'
+import { extractSuggestionsFromResponse } from '../utils/suggestions'
 
 const MOCK_RESULT = {
   atsScore: 78,
@@ -103,10 +104,8 @@ export default function ATSPage() {
   const [linkedInProfile, setLinkedInProfile] = useState(null) // set after OAuth callback
   const [linkedinAnalyzed,setLinkedinAnalyzed]= useState(false) // true once user clicks Analyze on LinkedIn tab
 
-  // Optimized Resume Text state
-  const [optimizedResume, setOptimizedResume] = useState(null)
-  const [outputTab, setOutputTab] = useState('markdown')
   const [uploadedResumeId, setUploadedResumeId] = useState(null)
+  const [suggestions, setSuggestions] = useState([])
 
   const activeRole = role === 'Others' ? customRole : role
 
@@ -144,6 +143,7 @@ export default function ATSPage() {
   function handleLinkedInReconnect() {
     setLinkedInProfile(null)
     setResult(null)
+    setSuggestions([])
     setLinkedinAnalyzed(false)
   }
 
@@ -234,13 +234,6 @@ export default function ATSPage() {
     setFile(f)
     setFileName(f.name)
     setUploadedResumeId(null)
-
-    if (f.type === 'application/pdf') {
-      const url = URL.createObjectURL(f)
-      setPdfUrl(url)
-    } else {
-      setPdfUrl(null)
-    }
   }
 
   // ── LinkedIn import handlers ──────────────────────────
@@ -259,7 +252,7 @@ export default function ATSPage() {
       const res = await resumeService.importLinkedIn(linkedInUrl, jdText, activeRole)
       if (res.success && res.data) {
         toast.success("LinkedIn profile imported successfully!")
-        setResultFromResume(res.data)
+        setResultFromResume(res.data, res)
       } else {
         toast.error("Failed to import LinkedIn profile")
       }
@@ -271,24 +264,17 @@ export default function ATSPage() {
     }
   }
 
-  // Helper to map DB resume to ATS Result state
-  function setResultFromResume(resume) {
-    const score = resume.atsScore || 0
-    const resultData = resume.atsResult || {}
-    
-    const mappedSuggestions = (resume.suggestions || []).map((s, idx) => {
-      if (typeof s === 'string') {
-        return {
-          id: idx + 1,
-          section: 'Resume',
-          type: 'Improve',
-          priority: 'Medium',
-          before: null,
-          after: s
-        }
-      }
-      return s
-    })
+  function setResultFromResume(resume, apiResponse = null, suggestionList = null) {
+    const resultData = apiResponse?.analysis || resume?.atsResult || {}
+    const score = resultData.atsScore ?? resume?.atsScore ?? 0
+    const mappedSuggestions =
+      suggestionList ?? extractSuggestionsFromResponse(resume, apiResponse)
+
+    if (resume._id) {
+      setUploadedResumeId(resume._id)
+    }
+
+    setSuggestions(mappedSuggestions)
 
     setResult({
       resumeId: resume._id,
@@ -310,13 +296,6 @@ export default function ATSPage() {
       },
       suggestions: mappedSuggestions
     })
-
-    if (resume.parsedText) {
-      setOptimizedResume({
-        plainText: resume.parsedText,
-        markdown: `# ${resume.parsedData?.name || "Resume Profile"}\n\n${resume.parsedText}`
-      })
-    }
   }
 
   // ── Role / JD handlers ───────────────────────────────
@@ -343,13 +322,9 @@ export default function ATSPage() {
     setLoading(false)
     setLinkedinAnalyzed(false)
     setUploadedResumeId(null)
-    if (pdfUrl) {
-      URL.revokeObjectURL(pdfUrl)
-      setPdfUrl(null)
-    }
+    setSuggestions([])
   }
 
-  // ── Download and Print helpers ──────────────────────────
   // ── Analyze ──────────────────────────────────────────
   async function handleAnalyze() {
     if (!requireAuth()) return
@@ -359,36 +334,38 @@ export default function ATSPage() {
       return
     }
 
+    setSuggestions([])
+    setResult(null)
     setLoading(true)
     try {
       let res
       const keywords = activeRole ? [activeRole] : []
 
-      if (uploadedResumeId && source === 'upload') {
-        res = await resumeService.analyzeResume(uploadedResumeId, jdText, keywords)
-      } else if (source === 'upload' && file) {
+      const resumeId = uploadedResumeId || result?.resumeId
+
+      if (resumeId) {
+        try {
+          res = await resumeService.analyzeResume(resumeId, jdText, keywords)
+        } catch (analyzeErr) {
+          if (analyzeErr.response?.status === 404 && file) {
+            res = await resumeService.uploadResume(file, jdText, keywords)
+          } else {
+            throw analyzeErr
+          }
+        }
+      } else if (file) {
         res = await resumeService.uploadResume(file, jdText, keywords)
       } else {
-        if (!file) {
-          uploadToast()
-          setLoading(false)
-          return
-        }
-        res = await resumeService.uploadResume(file, jdText, keywords)
+        uploadToast()
+        setLoading(false)
+        return
       }
 
       if (res.success && res.data) {
-        if (res.data._id) {
-          setUploadedResumeId(res.data._id)
-        }
+        const nextSuggestions = extractSuggestionsFromResponse(res.data, res)
+        setSuggestions(nextSuggestions)
         toast.success("Analysis complete!")
-        setResultFromResume(res.data)
-        try {
-          const opt = await resumeService.downloadModified(res.data._id, [], "json")
-          setOptimizedResume(opt)
-        } catch (e) {
-          console.warn("Could not pre-load original representation", e)
-        }
+        setResultFromResume(res.data, res, nextSuggestions)
       } else {
         toast.error("Failed to analyze resume.")
       }
@@ -643,130 +620,14 @@ export default function ATSPage() {
           <div>
             {loading
               ? <LoadingSkeleton />
-              : <SuggestionsPanel 
-                  suggestions={result.suggestions} 
-                  resumeId={result.resumeId} 
-                  onOptimizedOutputGenerated={(output) => {
-                    setOptimizedResume(output);
-                    toast.success("Optimized resume text successfully generated!");
-                  }} 
-                />
+              : (
+                <SuggestionsPanel suggestions={suggestions} />
+              )
             }
           </div>
         </div>
       )}
 
-      {/* ── Optimized Resume Output Section ── */}
-      {result && optimizedResume && (
-        <div style={{ marginTop: 'var(--space-10)', marginBottom: 'var(--space-8)' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 'var(--space-5)',
-            borderBottom: '1px solid var(--color-border)',
-            paddingBottom: 'var(--space-4)',
-            flexWrap: 'wrap',
-            gap: 'var(--space-3)'
-          }}>
-            <div>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 'var(--weight-bold)', fontSize: 'var(--text-lg)', color: 'var(--color-text-primary)' }}>
-                Optimized Resume Output
-              </h3>
-              <p className="text-secondary" style={{ fontSize: 'var(--text-sm)', marginTop: '2px' }}>
-                Preview the optimized resume text with your selected AI suggestions applied
-              </p>
-            </div>
-            {/* View Tabs */}
-            <div className="toggle-group" style={{ margin: 0 }}>
-              <button
-                className={`toggle-btn ${outputTab === 'markdown' ? 'active' : ''}`}
-                onClick={() => setOutputTab('markdown')}
-              >
-                Markdown View
-              </button>
-              <button
-                className={`toggle-btn ${outputTab === 'text' ? 'active' : ''}`}
-                onClick={() => setOutputTab('text')}
-              >
-                Plain Text View
-              </button>
-            </div>
-          </div>
-
-          {/* Code Viewer Card */}
-          <div className="card" style={{ padding: 'var(--space-6)', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              
-              {/* Output Display Area */}
-              <div style={{ position: 'relative' }}>
-                <textarea
-                  readOnly
-                  className="input textarea"
-                  style={{
-                    fontFamily: outputTab === 'markdown' ? 'Consolas, Monaco, monospace' : 'inherit',
-                    fontSize: 'var(--text-sm)',
-                    lineHeight: '1.6',
-                    height: '500px',
-                    width: '100%',
-                    padding: 'var(--space-4)',
-                    background: 'var(--color-bg-surface-2)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    resize: 'none',
-                    color: 'var(--color-text-primary)'
-                  }}
-                  value={outputTab === 'markdown' ? optimizedResume.markdown : optimizedResume.plainText}
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    const textToCopy = outputTab === 'markdown' ? optimizedResume.markdown : optimizedResume.plainText;
-                    navigator.clipboard.writeText(textToCopy);
-                    toast.success("Optimized resume copied to clipboard!");
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                  Copy Optimized Resume Text
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => {
-                    const blob = new Blob([optimizedResume.plainText], { type: 'text/utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    
-                    const baseName = fileName ? fileName.replace(/\.[^/.]+$/, "") : "optimized_resume";
-                    link.setAttribute('download', `${baseName}_optimized.txt`);
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(url);
-                    
-                    toast.success("Downloaded optimized plain text resume!");
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                  </svg>
-                  Download TXT
-                </button>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

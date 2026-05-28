@@ -4,25 +4,30 @@ const CORE_KEYWORDS = [
   "react", "angular", "vue", "node.js", "express", "next.js", "javascript", "typescript",
   "python", "django", "flask", "java", "spring", "c#", ".net", "go", "rust", "ruby", "rails",
   "sql", "mysql", "postgresql", "mongodb", "nosql", "redis", "docker", "kubernetes",
-  "aws", "azure", "gcp", "git", "ci/cd", "html", "css", "rest api", "graphql",
+  "aws", "azure", "gcp", "git", "ci/cd", "html", "css", "rest api", "graphql", "api",
   "microservices", "tailwind", "bootstrap", "redux", "webpack", "jira", "agile", "scrum",
   "c++", "c", "php", "laravel", "sass", "less", "babel", "testing", "jest",
   "cypress", "selenium", "machine learning", "deep learning", "nlp", "tableau", "powerbi",
   "excel", "data analysis", "cloud", "serverless", "figma", "sketch", "adobe xd", "ui/ux",
-  "product management", "scrum master",
+  "product management", "scrum master", "pandas", "numpy", "tensorflow", "pytorch", "spark",
 ];
 
 const ROLE_BASELINES = {
   "software engineer": ["react", "node.js", "javascript", "sql", "git", "rest api"],
-  "frontend developer": ["react", "javascript", "typescript", "html", "css", "tailwind", "git"],
-  "backend developer": ["node.js", "express", "sql", "mongodb", "rest api", "docker", "git"],
+  "frontend developer": ["react", "javascript", "html", "css", "typescript", "tailwind", "git"],
+  "frontend": ["react", "javascript", "html", "css", "typescript", "tailwind", "git"],
+  "backend developer": ["node.js", "express", "sql", "mongodb", "rest api", "api", "docker", "git"],
+  "backend": ["node.js", "express", "sql", "mongodb", "rest api", "api", "docker", "git"],
   "data analyst": ["sql", "python", "excel", "tableau", "powerbi", "data analysis"],
-  "data scientist": ["python", "machine learning", "deep learning", "sql", "nlp"],
-  "product manager": ["product management", "agile", "scrum", "jira", "roadmaps"],
-  "ux designer": ["ui/ux", "figma", "sketch", "adobe xd", "wireframing"],
-  "devops engineer": ["docker", "kubernetes", "aws", "ci/cd", "linux", "terraform", "git"],
+  "data scientist": ["python", "machine learning", "pandas", "numpy", "sql", "deep learning", "nlp"],
+  "data science": ["python", "machine learning", "pandas", "numpy", "sql", "deep learning", "nlp"],
+  "product manager": ["product management", "agile", "scrum", "jira"],
+  "ux designer": ["ui/ux", "figma", "sketch", "adobe xd"],
+  "devops engineer": ["docker", "kubernetes", "aws", "ci/cd", "terraform", "git"],
   "full stack developer": ["react", "node.js", "javascript", "sql", "mongodb", "rest api", "git"],
 };
+
+const GENERIC_FALLBACK = ["communication", "teamwork", "problem solving"];
 
 const ALIAS_GROUPS = [
   ["nodejs", "node.js"],
@@ -121,39 +126,92 @@ function isSkillInResume(targetSkill, resumeTextNormalized, rawResumeText) {
   return false;
 }
 
+function matchRoleToBaseline(roleLabel) {
+  const r = String(roleLabel).toLowerCase().trim();
+  if (!r) return null;
+  if (ROLE_BASELINES[r]) return ROLE_BASELINES[r];
+  if (r.includes("front")) return ROLE_BASELINES["frontend developer"];
+  if (r.includes("back")) return ROLE_BASELINES["backend developer"];
+  if (r.includes("full stack") || r.includes("fullstack")) return ROLE_BASELINES["full stack developer"];
+  if (r.includes("data sci")) return ROLE_BASELINES["data scientist"];
+  if (r.includes("data anal")) return ROLE_BASELINES["data analyst"];
+  if (r.includes("devops")) return ROLE_BASELINES["devops engineer"];
+  if (r.includes("product")) return ROLE_BASELINES["product manager"];
+  if (r.includes("ux") || r.includes("ui")) return ROLE_BASELINES["ux designer"];
+  if (r.includes("software")) return ROLE_BASELINES["software engineer"];
+  return null;
+}
+
+/** Extract skills from JD text — longest keywords first for better phrase matching. */
+function extractSkillsFromJobDescription(jobDescription) {
+  const normalizedJd = normalizeText(jobDescription);
+  const sortedCore = [...CORE_KEYWORDS].sort((a, b) => b.length - a.length);
+  const found = sortedCore.filter((skill) =>
+    isSkillInResume(skill, normalizedJd, jobDescription)
+  );
+
+  const segments = jobDescription.split(/[,;|•\n\r]+/);
+  segments.forEach((seg) => {
+    const token = seg.replace(/[^a-zA-Z0-9+#.\s/-]/g, "").trim().toLowerCase();
+    if (token.length < 2 || token.length > 45) return;
+    if (CORE_KEYWORDS.includes(token) && !found.includes(token)) {
+      found.push(token);
+    }
+    sortedCore.forEach((skill) => {
+      if (token.includes(skill) && !found.includes(skill)) {
+        found.push(skill);
+      }
+    });
+  });
+
+  return [...new Set(found)];
+}
+
 function resolveTargetSkills(jobDescription = "", keywords = []) {
+  const hasJd = Boolean(jobDescription && jobDescription.trim().length > 0);
+  const roleKeywords = normalizeKeywords(keywords);
   let targetSkills = [];
 
-  if (jobDescription && jobDescription.trim().length > 0) {
-    const normalizedJd = normalizeText(jobDescription);
-    targetSkills = CORE_KEYWORDS.filter((skill) =>
-      isSkillInResume(skill, normalizedJd, jobDescription)
-    );
+  if (hasJd) {
+    targetSkills = extractSkillsFromJobDescription(jobDescription);
   }
 
-  if (keywords && keywords.length > 0) {
-    keywords.forEach((kw) => {
-      const cleanKw = String(kw).toLowerCase().trim();
-      if (ROLE_BASELINES[cleanKw]) {
-        targetSkills = [...new Set([...targetSkills, ...ROLE_BASELINES[cleanKw]])];
-      } else {
-        const customExtracted = CORE_KEYWORDS.filter((skill) =>
-          isSkillInResume(skill, normalizeText(kw), kw)
-        );
-        if (customExtracted.length > 0) {
-          targetSkills = [...new Set([...targetSkills, ...customExtracted])];
-        } else if (cleanKw && !targetSkills.includes(cleanKw)) {
-          targetSkills.push(cleanKw);
-        }
+  if (roleKeywords.length > 0) {
+    roleKeywords.forEach((kw) => {
+      const baseline = matchRoleToBaseline(kw);
+      if (baseline) {
+        targetSkills = [...new Set([...targetSkills, ...baseline])];
+        return;
+      }
+      const fromKw = CORE_KEYWORDS.filter((skill) =>
+        isSkillInResume(skill, normalizeText(kw), kw)
+      );
+      if (fromKw.length > 0) {
+        targetSkills = [...new Set([...targetSkills, ...fromKw])];
+      } else if (kw.length >= 2 && kw.length <= 40) {
+        targetSkills.push(kw);
       }
     });
   }
 
-  if (targetSkills.length === 0) {
-    targetSkills = ["react", "node.js", "javascript", "sql", "git", "rest api"];
+  if (targetSkills.length === 0 && hasJd) {
+    targetSkills = extractSkillsFromJobDescription(jobDescription);
   }
 
-  return targetSkills;
+  if (targetSkills.length === 0 && roleKeywords.length > 0) {
+    roleKeywords.forEach((kw) => {
+      const baseline = matchRoleToBaseline(kw);
+      if (baseline) {
+        targetSkills = [...new Set([...targetSkills, ...baseline])];
+      }
+    });
+  }
+
+  if (targetSkills.length === 0 && !hasJd && roleKeywords.length === 0) {
+    targetSkills = [...GENERIC_FALLBACK];
+  }
+
+  return [...new Set(targetSkills)];
 }
 
 function computeSectionScore(normalizedResume) {
@@ -224,7 +282,7 @@ function runDeterministicATSScoring(resumeText, jobDescription = "", keywords = 
   const { formattingScore, wordCount } = computeFormattingScore(rawResumeText);
 
   const atsScore = Math.round(
-    keywordScore * 0.55 + sectionScore * 0.25 + formattingScore * 0.2
+    keywordScore * 0.6 + sectionScore * 0.25 + formattingScore * 0.15
   );
 
   return {
@@ -273,6 +331,8 @@ module.exports = {
   normalizeKeywords,
   computeAnalysisHash,
   isSkillInResume,
+  extractSkillsFromJobDescription,
+  matchRoleToBaseline,
   resolveTargetSkills,
   runDeterministicATSScoring,
   buildDeterministicResult,

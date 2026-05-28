@@ -15,8 +15,8 @@ const resumeService = {
     return res.data;
   },
 
-  async analyzeResume(resumeId, jobDescription = "", keywords = []) {
-    const res = await api.post(`/resume/analyze/${resumeId}`, {
+  async analyzeResume(id, jobDescription = "", keywords = []) {
+    const res = await api.post(`/resume/${id}/analyze`, {
       jobDescription,
       keywords,
     });

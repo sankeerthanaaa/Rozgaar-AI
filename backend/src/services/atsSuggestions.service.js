@@ -1,165 +1,250 @@
 const { getAIResponse } = require("./ai.service");
 
+const HALLUCINATION_PATTERNS = [
+  /structural design/i,
+  /advanced manufacturing/i,
+  /delivered a complex engineering project/i,
+];
+
 function extractJSON(text) {
   const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    return JSON.parse(jsonMatch[0]);
-  }
+  if (jsonMatch) return JSON.parse(jsonMatch[0]);
   throw new Error("No valid JSON object found in AI response");
 }
 
-function getLocalFallbackSuggestions(scoringResult) {
-  const { missingKeywords, sectionScore, formattingScore, wordCount } = scoringResult;
-  const suggestions = [];
-  let idCounter = 1;
+function capitalizeType(type) {
+  const t = String(type || "Improve").toLowerCase();
+  if (t === "add") return "Add";
+  if (t === "remove") return "Remove";
+  return "Improve";
+}
 
-  if (missingKeywords.length > 0) {
-    suggestions.push({
-      id: idCounter++,
-      section: "Skills",
-      priority: "High",
-      type: "Add",
-      original: "",
-      improved: `Incorporate these missing target keywords to align with the job description: ${missingKeywords.slice(0, 5).join(", ")}.`,
-    });
-  }
+function normalizeSuggestionEntry(s, idx) {
+  const before = String(s.before || s.original || "").trim();
+  const after = String(s.after || s.improved || s.text || s.suggestion || "").trim();
+  const section = String(s.section || "Resume").trim() || "Resume";
+  const priority = ["High", "Medium", "Low"].includes(s.priority) ? s.priority : "Medium";
+  const title = String(s.title || "").trim();
 
-  if (sectionScore < 100) {
-    suggestions.push({
-      id: idCounter++,
-      section: "Structure",
-      priority: "High",
-      type: "Add",
-      original: "",
-      improved:
-        "Your resume is missing standard sections (Experience, Education, Skills, Projects, or Summary). Add appropriate headings to improve parser read rate.",
-    });
-  }
-
-  if (formattingScore < 100) {
-    suggestions.push({
-      id: idCounter++,
-      section: "Summary",
-      priority: "Medium",
-      type: "Improve",
-      original: "",
-      improved:
-        "Include complete contact details (email, phone, LinkedIn or GitHub links) in a clean header at the top of your resume.",
-    });
-  }
-
-  if (wordCount < 150) {
-    suggestions.push({
-      id: idCounter++,
-      section: "Summary",
-      priority: "Medium",
-      type: "Improve",
-      original: "",
-      improved:
-        "Expand your experience descriptions, list projects built, and highlight technical skills to present a more comprehensive profile.",
-    });
-  } else if (wordCount > 1200) {
-    suggestions.push({
-      id: idCounter++,
-      section: "Summary",
-      priority: "Low",
-      type: "Remove",
-      original: "",
-      improved:
-        "Keep descriptions concise, focus on relevant experience, and remove older or non-technical roles to keep it within 1-2 pages.",
-    });
-  }
-
-  suggestions.push({
-    id: idCounter++,
-    section: "Experience",
-    priority: "Medium",
-    type: "Improve",
-    original: "Responsible for writing clean code and fixing bugs.",
-    improved:
-      "Developed and deployed 5+ scalable frontend features using React, reducing page load times by 20% and resolving critical bugs in production.",
-  });
+  if (!after || after.length < 12) return null;
+  if (before && before === after) return null;
 
   return {
-    suggestions,
-    strengths: ["Structured layout matching parser guidelines.", "Good basic section layout."],
-    weaknesses:
-      missingKeywords.length > 0
-        ? ["Several missing domain keywords for the role."]
-        : ["Bullet points could be more impact-driven."],
-    improvementTips: [
-      "Use metric-focused bullet points.",
-      "Update top header with links to Github and LinkedIn.",
-    ],
+    id: s.id ?? idx + 1,
+    section,
+    priority: priority,
+    type: "Improve",
+    title,
+    original: before,
+    improved: after,
+    before,
+    after,
   };
 }
 
-/**
- * AI is used ONLY for suggestions — never for scores.
- */
-async function generateSuggestions(resumeText, jobDescription, keywords, scoringResult) {
-  const jdContext = jobDescription ? `\n\nTarget Job Description:\n${jobDescription}` : "";
-  const keywordsContext =
-    keywords && keywords.length > 0 ? `\n\nTarget Keywords:\n${keywords.join(", ")}` : "";
+function normalizeSuggestionsList(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((s, idx) => normalizeSuggestionEntry(s, idx)).filter(Boolean);
+}
 
-  const prompt = `
-You are an expert resume reviewer. Analyze the following resume text and suggest improvements.
-${jdContext}
-${keywordsContext}
+function collapseWhitespace(text) {
+  return String(text).replace(/\s+/g, " ").trim().toLowerCase();
+}
 
-Resume Text:
-${resumeText}
+function isSubstringInResume(needle, resumeText) {
+  if (!needle || needle.length < 8) return false;
+  const hay = collapseWhitespace(resumeText);
+  const n = collapseWhitespace(needle);
+  if (hay.includes(n)) return true;
+  const words = n.split(" ").filter((w) => w.length > 3);
+  if (words.length < 4) return false;
+  const matched = words.filter((w) => hay.includes(w));
+  return matched.length / words.length >= 0.75;
+}
 
-Your task is to identify areas for improvement and generate:
-1. Actionable suggestions for modifying specific text. For each suggestion, provide the original text (must exist exactly in the resume) and an improved version (action-oriented, quantified if possible).
-2. Key strengths of the resume.
-3. Key weaknesses of the resume.
-4. General improvement tips.
+function hasFabricatedMetrics(before, after) {
+  const metricRe = /\b\d{1,3}\s*%|\b\d+\s*(x|times)\b/i;
+  return metricRe.test(after || "") && !metricRe.test(before || "");
+}
 
-CRITICAL: You must NEVER generate or output any ATS scores, keyword match scores, formatting scores, or job match scores.
+function validateAiSuggestion(s, resumeText) {
+  const before = String(s.before || s.original || "").trim();
+  const after = String(s.after || s.improved || "").trim();
+  if (capitalizeType(s.type) !== "Improve") return false;
+  if (after.length < 12) return false;
+  if (before && before === after) return false;
+  if (before.length >= 10 && !isSubstringInResume(before, resumeText)) return false;
+  if (hasFabricatedMetrics(before, after)) return false;
+  for (const pattern of HALLUCINATION_PATTERNS) {
+    if (pattern.test(after) && !pattern.test(before)) return false;
+  }
+  return true;
+}
 
-You MUST respond with a JSON object in this exact schema:
+function findSkillsLine(resumeText) {
+  const lines = resumeText.split(/\r?\n/).map((l) => l.trim());
+  for (let i = 0; i < lines.length; i++) {
+    if (/^(technical )?skills|technologies|tools\b/i.test(lines[i])) {
+      const next = lines[i + 1] || lines[i];
+      if (next.length > 10) return next;
+    }
+    if (/skills\s*:/i.test(lines[i]) && lines[i].length > 12) return lines[i];
+  }
+  return null;
+}
+
+function getFallbackSuggestions(resumeText, scoringResult, jobDescription, role) {
+  const missingKeywords = scoringResult.missingKeywords || [];
+  const suggestions = [];
+  const roleAlignmentTips = [];
+  const improvementTips = [];
+
+  if (role) {
+    roleAlignmentTips.push(`Tailor bullets and skills toward the ${role} role using terms already on your resume.`);
+  }
+
+  if (missingKeywords.length > 0) {
+    const skillsLine = findSkillsLine(resumeText || "");
+    const toAdd = missingKeywords
+      .slice(0, 5)
+      .filter((k) => !collapseWhitespace(resumeText || "").includes(k.toLowerCase()));
+
+    if (skillsLine && toAdd.length > 0 && suggestions.length < 3) {
+      suggestions.push({
+        section: "Skills",
+        priority: "High",
+        type: "Improve",
+        title: "Add missing role/JD keywords",
+        before: skillsLine,
+        after: `${skillsLine}${/[,|]/.test(skillsLine) ? ", " : ": "}${toAdd.join(", ")}`,
+      });
+    } else if (toAdd.length > 0) {
+      improvementTips.push(
+        `Add to Skills (if accurate): ${toAdd.join(", ")}`
+      );
+    }
+  }
+
+  if (jobDescription?.trim() && suggestions.length === 0 && improvementTips.length === 0) {
+    improvementTips.push("Compare your experience bullets against the JD and strengthen wording on matching lines.");
+  }
+
+  return {
+    suggestions: normalizeSuggestionsList(suggestions),
+    missingKeywords: missingKeywords.slice(0, 10),
+    roleAlignmentTips,
+    summary: "Fallback suggestions based on your resume and job match.",
+    strengths: [],
+    weaknesses: missingKeywords.length
+      ? [`Missing keywords for this role/JD: ${missingKeywords.slice(0, 5).join(", ")}`]
+      : [],
+    improvementTips,
+  };
+}
+
+async function generateAiSuggestions(resumeText, jobDescription, role, scoringResult) {
+  const roleStr = role || "Not specified";
+  const jdStr = jobDescription?.trim() || "Not provided";
+
+  const prompt = `You are an expert ATS resume improvement assistant.
+
+STRICT RULES:
+- Generate suggestions ONLY from the provided resume.
+- Suggestions MUST match the selected role and JD.
+- NEVER generate generic filler suggestions.
+- NEVER generate unrelated engineering/project examples.
+- NEVER invent fake achievements.
+- NEVER mention technologies absent from the resume/JD.
+- Suggestions must feel personalized and realistic.
+- Every "before" must be an exact substring from the resume.
+- type must be "Improve" only.
+- Maximum 3 suggestions.
+- "after" is REQUIRED and must be different from "before".
+- Never return a suggestion with empty "after".
+
+Return ONLY valid JSON.
+
+JSON FORMAT:
 {
   "suggestions": [
     {
       "id": 1,
       "section": "Experience",
-      "priority": "High",
       "type": "Improve",
-      "original": "original text from resume here",
-      "improved": "improved text to replace original here"
+      "priority": "High",
+      "title": "Improve impact wording",
+      "before": "<actual weak line from resume>",
+      "after": "<better rewritten version>"
     }
   ],
-  "strengths": ["strength 1", "strength 2"],
-  "weaknesses": ["weakness 1", "weakness 2"],
-  "improvementTips": ["tip 1", "tip 2"]
+  "missingKeywords": [],
+  "roleAlignmentTips": [],
+  "summary": ""
 }
 
-Only suggest practical, realistic improvements. Ensure the "original" text exists as a substring in the resume so it can be located and replaced.
-Respond ONLY with valid JSON. No markdown fences, no explanations.
-`;
+ROLE:
+${roleStr}
+
+JOB DESCRIPTION:
+${jdStr}
+
+RESUME:
+${resumeText.slice(0, 12000)}`;
+
+  const responseText = await getAIResponse(
+    prompt,
+    "You are an ATS resume assistant. Respond with ONLY valid JSON. No markdown."
+  );
+
+  const parsed = extractJSON(responseText);
+  const validated = (parsed.suggestions || [])
+    .filter((s) => validateAiSuggestion(s, resumeText))
+    .slice(0, 3);
+
+  return {
+    suggestions: normalizeSuggestionsList(validated),
+    missingKeywords: Array.isArray(parsed.missingKeywords)
+      ? parsed.missingKeywords
+      : scoringResult.missingKeywords || [],
+    roleAlignmentTips: Array.isArray(parsed.roleAlignmentTips) ? parsed.roleAlignmentTips : [],
+    summary: String(parsed.summary || "").trim(),
+    strengths: [],
+    weaknesses: [],
+    improvementTips: Array.isArray(parsed.roleAlignmentTips) ? parsed.roleAlignmentTips : [],
+  };
+}
+
+async function generateSuggestions(resumeText, jobDescription, keywords, scoringResult) {
+  const role = keywords?.length ? String(keywords[0]) : "";
 
   try {
-    const responseText = await getAIResponse(
-      prompt,
-      "You are an expert resume reviewer. Respond with ONLY a valid JSON object. No markdown, no code fences. Start with { and end with }."
+    const aiPayload = await generateAiSuggestions(
+      resumeText,
+      jobDescription,
+      role,
+      scoringResult
     );
-    const parsed = extractJSON(responseText);
-    if (parsed && Array.isArray(parsed.suggestions)) {
-      return parsed;
+    if (aiPayload.suggestions && aiPayload.suggestions.length > 0) {
+      return { ...aiPayload, source: "ai" };
     }
-  } catch (aiError) {
-    console.log(
-      "AI suggestion generation failed, using local fallback:",
-      aiError.message
-    );
+  } catch (err) {
+    console.log("AI suggestions failed, using fallback:", err.message);
   }
 
-  return getLocalFallbackSuggestions(scoringResult);
+  return {
+    ...getFallbackSuggestions(resumeText, scoringResult, jobDescription, role),
+    source: "fallback",
+  };
+}
+
+function getLocalFallbackSuggestions(scoringResult, resumeText = "", jobDescription = "", role = "") {
+  return getFallbackSuggestions(resumeText, scoringResult, jobDescription, role);
 }
 
 module.exports = {
   generateSuggestions,
   getLocalFallbackSuggestions,
+  normalizeSuggestionsList,
+  validateAiSuggestion,
 };
